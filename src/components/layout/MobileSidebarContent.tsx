@@ -1,4 +1,4 @@
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -34,6 +34,7 @@ const menuItems = [
 export function MobileSidebarContent({ profile, userEmail }: MobileSidebarContentProps) {
   const { signOut } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const getInitials = (name: string | null, email?: string) => {
     if (name) {
@@ -80,22 +81,25 @@ export function MobileSidebarContent({ profile, userEmail }: MobileSidebarConten
 
       {/* Menu items */}
       <nav className="flex-1 p-4 space-y-1">
-        {menuItems.map(({ to, icon: Icon, label }) => (
-          <SheetClose asChild key={to}>
-            <NavLink
-              to={to}
-              className={({ isActive }) => cn(
-                'flex items-center gap-3 px-4 py-3 rounded-lg transition-colors',
-                isActive 
-                  ? 'bg-primary/10 text-primary font-medium' 
-                  : 'text-foreground hover:bg-muted'
-              )}
-            >
-              <Icon className="h-5 w-5" />
-              <span>{label}</span>
-            </NavLink>
-          </SheetClose>
-        ))}
+        {menuItems.map(({ to, icon: Icon, label }) => {
+          const isActive = location.pathname === to || location.pathname.startsWith(to + '/');
+          return (
+            <SheetClose asChild key={to}>
+              <NavLink
+                to={to}
+                className={cn(
+                  'flex flex-row items-center gap-3 px-4 py-3 rounded-lg transition-colors',
+                  isActive 
+                    ? 'bg-primary/10 text-primary font-medium' 
+                    : 'text-foreground hover:bg-muted'
+                )}
+              >
+                <Icon className="h-5 w-5 flex-shrink-0" />
+                <span>{label}</span>
+              </NavLink>
+            </SheetClose>
+          );
+        })}
       </nav>
 
       {/* Footer */}
@@ -103,14 +107,14 @@ export function MobileSidebarContent({ profile, userEmail }: MobileSidebarConten
         <SheetClose asChild>
           <NavLink
             to="/profile"
-            className={({ isActive }) => cn(
-              'flex items-center gap-3 px-4 py-3 rounded-lg transition-colors',
-              isActive 
+            className={cn(
+              'flex flex-row items-center gap-3 px-4 py-3 rounded-lg transition-colors',
+              location.pathname === '/profile'
                 ? 'bg-primary/10 text-primary font-medium' 
                 : 'text-foreground hover:bg-muted'
             )}
           >
-            <User className="h-5 w-5" />
+            <User className="h-5 w-5 flex-shrink-0" />
             <span>Mi Perfil</span>
           </NavLink>
         </SheetClose>
