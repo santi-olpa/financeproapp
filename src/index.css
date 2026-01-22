@@ -62,39 +62,39 @@
   }
 
   .dark {
-    /* Dark mode - Primary theme */
-    --background: 225 25% 8%;
+    /* Dark mode - Deep dark theme with more contrast */
+    --background: 230 20% 5%;
     --foreground: 210 20% 95%;
 
-    --card: 225 25% 11%;
+    --card: 230 20% 8%;
     --card-foreground: 210 20% 95%;
 
-    --popover: 225 25% 11%;
+    --popover: 230 20% 10%;
     --popover-foreground: 210 20% 95%;
 
     --primary: 250 95% 70%;
-    --primary-foreground: 225 25% 8%;
+    --primary-foreground: 230 20% 5%;
 
-    --secondary: 225 20% 16%;
+    --secondary: 230 20% 12%;
     --secondary-foreground: 210 20% 95%;
 
-    --muted: 225 20% 16%;
+    --muted: 230 15% 15%;
     --muted-foreground: 215 15% 55%;
 
     --accent: 170 80% 50%;
-    --accent-foreground: 225 25% 8%;
+    --accent-foreground: 230 20% 5%;
 
     --destructive: 0 75% 55%;
     --destructive-foreground: 0 0% 100%;
 
     --success: 145 70% 50%;
-    --success-foreground: 225 25% 8%;
+    --success-foreground: 230 20% 5%;
 
     --warning: 38 95% 55%;
-    --warning-foreground: 225 25% 8%;
+    --warning-foreground: 230 20% 5%;
 
-    --border: 225 20% 18%;
-    --input: 225 20% 18%;
+    --border: 230 15% 15%;
+    --input: 230 15% 15%;
     --ring: 250 95% 70%;
 
     /* Finance specific tokens */
@@ -102,13 +102,13 @@
     --expense: 0 75% 55%;
     --transfer: 210 90% 60%;
 
-    --sidebar-background: 225 25% 10%;
+    --sidebar-background: 230 20% 6%;
     --sidebar-foreground: 210 15% 70%;
     --sidebar-primary: 250 95% 70%;
-    --sidebar-primary-foreground: 225 25% 8%;
-    --sidebar-accent: 225 20% 16%;
+    --sidebar-primary-foreground: 230 20% 5%;
+    --sidebar-accent: 230 20% 12%;
     --sidebar-accent-foreground: 210 20% 95%;
-    --sidebar-border: 225 20% 18%;
+    --sidebar-border: 230 15% 12%;
     --sidebar-ring: 250 95% 70%;
   }
 }

@@ -13,8 +13,11 @@ import SignUp from "./pages/auth/SignUp";
 import Dashboard from "./pages/Dashboard";
 import Accounts from "./pages/Accounts";
 import NewAccount from "./pages/accounts/NewAccount";
+import AccountDetail from "./pages/accounts/AccountDetail";
+import EditAccount from "./pages/accounts/EditAccount";
 import Transactions from "./pages/Transactions";
 import NewTransaction from "./pages/transactions/NewTransaction";
+import Categories from "./pages/Categories";
 import Reports from "./pages/Reports";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
@@ -50,8 +53,11 @@ const AppRoutes = () => (
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/accounts" element={<Accounts />} />
       <Route path="/accounts/new" element={<NewAccount />} />
+      <Route path="/accounts/:id" element={<AccountDetail />} />
+      <Route path="/accounts/:id/edit" element={<EditAccount />} />
       <Route path="/transactions" element={<Transactions />} />
       <Route path="/transactions/new" element={<NewTransaction />} />
+      <Route path="/categories" element={<Categories />} />
       <Route path="/reports" element={<Reports />} />
       <Route path="/profile" element={<Profile />} />
     </Route>

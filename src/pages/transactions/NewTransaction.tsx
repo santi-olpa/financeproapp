@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { useToast } from '@/hooks/use-toast';
+import { Card, CardContent } from '@/components/ui/card';
 import {
   Select,
   SelectContent,
@@ -17,9 +18,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { TrendingUp, TrendingDown, ArrowLeftRight } from 'lucide-react';
+import { TrendingUp, TrendingDown, ArrowLeftRight, Info } from 'lucide-react';
 import type { TransactionType, Currency, Account, Category } from '@/types/finance';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { formatCurrency } from '@/lib/format';
+import { addMonths, format } from 'date-fns';
 
 export default function NewTransaction() {
   const { user } = useAuth();
@@ -37,8 +40,11 @@ export default function NewTransaction() {
   const [destinationAccountId, setDestinationAccountId] = useState('');
   const [transactionDate, setTransactionDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
+  
+  // Installments state
   const [hasInstallments, setHasInstallments] = useState(false);
   const [totalInstallments, setTotalInstallments] = useState('');
+  const [interestRate, setInterestRate] = useState('0');
 
   // Fetch accounts
   const { data: accounts } = useQuery({
@@ -73,6 +79,27 @@ export default function NewTransaction() {
     transactionType === 'income' ? c.category_type === 'income' : c.category_type === 'expense'
   );
 
+  // Calculate installment details
+  const installmentDetails = useMemo(() => {
+    const parsedAmount = parseFloat(amount) || 0;
+    const numInstallments = parseInt(totalInstallments) || 1;
+    const interest = parseFloat(interestRate) || 0;
+    
+    if (parsedAmount <= 0 || numInstallments < 1) return null;
+    
+    // Total with interest
+    const totalWithInterest = parsedAmount * (1 + interest / 100);
+    const installmentAmount = totalWithInterest / numInstallments;
+    
+    return {
+      originalAmount: parsedAmount,
+      totalWithInterest,
+      installmentAmount,
+      numInstallments,
+      interestAmount: totalWithInterest - parsedAmount,
+    };
+  }, [amount, totalInstallments, interestRate]);
+
   const createMutation = useMutation({
     mutationFn: async () => {
       const parsedAmount = parseFloat(amount);
@@ -80,79 +107,117 @@ export default function NewTransaction() {
         throw new Error('Monto inválido');
       }
 
-      const transactionData: any = {
-        user_id: user!.id,
-        transaction_type: transactionType,
-        amount: parsedAmount,
-        currency,
-        description: description || null,
-        transaction_date: transactionDate,
-        notes: notes || null,
-        has_installments: hasInstallments,
-        total_installments: hasInstallments ? parseInt(totalInstallments) : null,
-        current_installment: hasInstallments ? 1 : null,
-      };
+      const baseDate = new Date(transactionDate);
 
-      if (transactionType === 'transfer') {
-        transactionData.source_account_id = sourceAccountId;
-        transactionData.destination_account_id = destinationAccountId;
-      } else {
-        transactionData.account_id = accountId;
-        transactionData.category_id = categoryId || null;
-      }
-
-      // Create transaction
-      const { data: transaction, error } = await supabase
-        .from('transactions')
-        .insert(transactionData)
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      // Update account balance
-      if (transactionType === 'income' && accountId) {
-        const account = accounts?.find(a => a.id === accountId);
-        if (account) {
-          await supabase
-            .from('accounts')
-            .update({ current_balance: Number(account.current_balance) + parsedAmount })
-            .eq('id', accountId);
-        }
-      } else if (transactionType === 'expense' && accountId) {
-        const account = accounts?.find(a => a.id === accountId);
-        if (account) {
-          await supabase
-            .from('accounts')
-            .update({ current_balance: Number(account.current_balance) - parsedAmount })
-            .eq('id', accountId);
-        }
-      } else if (transactionType === 'transfer') {
-        const sourceAccount = accounts?.find(a => a.id === sourceAccountId);
-        const destAccount = accounts?.find(a => a.id === destinationAccountId);
+      if (hasInstallments && installmentDetails) {
+        // Create individual transactions for each installment
+        const installmentPromises = [];
         
-        if (sourceAccount) {
-          await supabase
-            .from('accounts')
-            .update({ current_balance: Number(sourceAccount.current_balance) - parsedAmount })
-            .eq('id', sourceAccountId);
+        for (let i = 0; i < installmentDetails.numInstallments; i++) {
+          const dueDate = addMonths(baseDate, i);
+          
+          const transactionData: any = {
+            user_id: user!.id,
+            transaction_type: transactionType,
+            amount: installmentDetails.installmentAmount,
+            currency,
+            description: description ? `${description} (${i + 1}/${installmentDetails.numInstallments})` : `Cuota ${i + 1}/${installmentDetails.numInstallments}`,
+            transaction_date: format(dueDate, 'yyyy-MM-dd'),
+            notes: notes || null,
+            has_installments: true,
+            total_installments: installmentDetails.numInstallments,
+            current_installment: i + 1,
+            account_id: accountId,
+            category_id: categoryId || null,
+          };
+
+          installmentPromises.push(
+            supabase.from('transactions').insert(transactionData)
+          );
         }
-        if (destAccount) {
-          await supabase
-            .from('accounts')
-            .update({ current_balance: Number(destAccount.current_balance) + parsedAmount })
-            .eq('id', destinationAccountId);
+
+        const results = await Promise.all(installmentPromises);
+        const errors = results.filter(r => r.error);
+        if (errors.length > 0) throw errors[0].error;
+
+        // Only deduct the first installment from the account
+        if (accountId) {
+          const account = accounts?.find(a => a.id === accountId);
+          if (account) {
+            await supabase
+              .from('accounts')
+              .update({ current_balance: Number(account.current_balance) - installmentDetails.installmentAmount })
+              .eq('id', accountId);
+          }
+        }
+      } else {
+        // Normal single transaction
+        const transactionData: any = {
+          user_id: user!.id,
+          transaction_type: transactionType,
+          amount: parsedAmount,
+          currency,
+          description: description || null,
+          transaction_date: transactionDate,
+          notes: notes || null,
+          has_installments: false,
+        };
+
+        if (transactionType === 'transfer') {
+          transactionData.source_account_id = sourceAccountId;
+          transactionData.destination_account_id = destinationAccountId;
+        } else {
+          transactionData.account_id = accountId;
+          transactionData.category_id = categoryId || null;
+        }
+
+        const { error } = await supabase.from('transactions').insert(transactionData);
+        if (error) throw error;
+
+        // Update account balance
+        if (transactionType === 'income' && accountId) {
+          const account = accounts?.find(a => a.id === accountId);
+          if (account) {
+            await supabase
+              .from('accounts')
+              .update({ current_balance: Number(account.current_balance) + parsedAmount })
+              .eq('id', accountId);
+          }
+        } else if (transactionType === 'expense' && accountId) {
+          const account = accounts?.find(a => a.id === accountId);
+          if (account) {
+            await supabase
+              .from('accounts')
+              .update({ current_balance: Number(account.current_balance) - parsedAmount })
+              .eq('id', accountId);
+          }
+        } else if (transactionType === 'transfer') {
+          const sourceAccount = accounts?.find(a => a.id === sourceAccountId);
+          const destAccount = accounts?.find(a => a.id === destinationAccountId);
+          
+          if (sourceAccount) {
+            await supabase
+              .from('accounts')
+              .update({ current_balance: Number(sourceAccount.current_balance) - parsedAmount })
+              .eq('id', sourceAccountId);
+          }
+          if (destAccount) {
+            await supabase
+              .from('accounts')
+              .update({ current_balance: Number(destAccount.current_balance) + parsedAmount })
+              .eq('id', destinationAccountId);
+          }
         }
       }
-
-      return transaction;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
       toast({
         title: 'Movimiento registrado',
-        description: 'El movimiento se guardó correctamente.',
+        description: hasInstallments 
+          ? `Se crearon ${installmentDetails?.numInstallments} cuotas correctamente.`
+          : 'El movimiento se guardó correctamente.',
       });
       navigate('/transactions');
     },
@@ -350,7 +415,7 @@ export default function NewTransaction() {
 
         {/* Cuotas (solo para egresos) */}
         {transactionType === 'expense' && (
-          <div className="space-y-2">
+          <div className="space-y-4">
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -361,15 +426,63 @@ export default function NewTransaction() {
               />
               <Label htmlFor="installments">Pago en cuotas</Label>
             </div>
+            
             {hasInstallments && (
-              <Input
-                type="number"
-                min="2"
-                max="48"
-                placeholder="Cantidad de cuotas"
-                value={totalInstallments}
-                onChange={(e) => setTotalInstallments(e.target.value)}
-              />
+              <Card className="border-primary/20 bg-primary/5">
+                <CardContent className="p-4 space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label>Cantidad de cuotas</Label>
+                      <Input
+                        type="number"
+                        min="2"
+                        max="48"
+                        placeholder="12"
+                        value={totalInstallments}
+                        onChange={(e) => setTotalInstallments(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Interés total (%)</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        placeholder="0"
+                        value={interestRate}
+                        onChange={(e) => setInterestRate(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  
+                  {installmentDetails && installmentDetails.numInstallments > 1 && (
+                    <div className="pt-3 border-t border-border/50 space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Monto original:</span>
+                        <span>{formatCurrency(installmentDetails.originalAmount, currency)}</span>
+                      </div>
+                      {installmentDetails.interestAmount > 0 && (
+                        <div className="flex justify-between text-warning">
+                          <span>Interés:</span>
+                          <span>+{formatCurrency(installmentDetails.interestAmount, currency)}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between font-medium">
+                        <span className="text-muted-foreground">Total a pagar:</span>
+                        <span>{formatCurrency(installmentDetails.totalWithInterest, currency)}</span>
+                      </div>
+                      <div className="flex justify-between text-primary font-semibold pt-2 border-t border-border/50">
+                        <span>Valor de cada cuota:</span>
+                        <span>{formatCurrency(installmentDetails.installmentAmount, currency)}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-2">
+                        <Info className="h-3 w-3" />
+                        Se crearán {installmentDetails.numInstallments} movimientos mensuales
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             )}
           </div>
         )}
