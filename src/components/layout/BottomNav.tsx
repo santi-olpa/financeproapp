@@ -13,7 +13,6 @@ const navItems = [
   { to: '/accounts', icon: Wallet, label: 'Cuentas' },
   { to: '/transactions', icon: ArrowLeftRight, label: 'Movimientos' },
   { to: '/reports', icon: PieChart, label: 'Reportes' },
-  { to: '/profile', icon: User, label: 'Perfil' },
 ];
 
 export function BottomNav() {
