@@ -2,6 +2,7 @@ import { Outlet } from 'react-router-dom';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { AppSidebar } from './AppSidebar';
 import { BottomNav } from './BottomNav';
+import { MobileHeader } from './MobileHeader';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 export function AppLayout() {
@@ -10,6 +11,7 @@ export function AppLayout() {
   if (isMobile) {
     return (
       <div className="min-h-screen bg-background pb-20">
+        <MobileHeader />
         <Outlet />
         <BottomNav />
       </div>
