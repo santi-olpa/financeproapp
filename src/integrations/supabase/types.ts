@@ -201,6 +201,7 @@ export type Database = {
           created_at: string
           default_currency: Database["public"]["Enums"]["currency_type"] | null
           full_name: string | null
+          hide_amounts: boolean | null
           id: string
           updated_at: string
           user_id: string
@@ -210,6 +211,7 @@ export type Database = {
           created_at?: string
           default_currency?: Database["public"]["Enums"]["currency_type"] | null
           full_name?: string | null
+          hide_amounts?: boolean | null
           id?: string
           updated_at?: string
           user_id: string
@@ -219,11 +221,90 @@ export type Database = {
           created_at?: string
           default_currency?: Database["public"]["Enums"]["currency_type"] | null
           full_name?: string | null
+          hide_amounts?: boolean | null
           id?: string
           updated_at?: string
           user_id?: string
         }
         Relationships: []
+      }
+      recurring_expenses: {
+        Row: {
+          account_id: string | null
+          amount: number
+          category_id: string | null
+          created_at: string
+          currency: Database["public"]["Enums"]["currency_type"]
+          description: string | null
+          end_date: string | null
+          frequency: string
+          id: string
+          is_active: boolean
+          last_generated_date: string | null
+          name: string
+          next_due_date: string
+          notes: string | null
+          price_history: Json | null
+          start_date: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_id?: string | null
+          amount: number
+          category_id?: string | null
+          created_at?: string
+          currency?: Database["public"]["Enums"]["currency_type"]
+          description?: string | null
+          end_date?: string | null
+          frequency: string
+          id?: string
+          is_active?: boolean
+          last_generated_date?: string | null
+          name: string
+          next_due_date: string
+          notes?: string | null
+          price_history?: Json | null
+          start_date?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_id?: string | null
+          amount?: number
+          category_id?: string | null
+          created_at?: string
+          currency?: Database["public"]["Enums"]["currency_type"]
+          description?: string | null
+          end_date?: string | null
+          frequency?: string
+          id?: string
+          is_active?: boolean
+          last_generated_date?: string | null
+          name?: string
+          next_due_date?: string
+          notes?: string | null
+          price_history?: Json | null
+          start_date?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recurring_expenses_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recurring_expenses_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "categories"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       transactions: {
         Row: {
@@ -239,6 +320,7 @@ export type Database = {
           id: string
           notes: string | null
           parent_transaction_id: string | null
+          recurring_expense_id: string | null
           source_account_id: string | null
           total_installments: number | null
           transaction_date: string
@@ -259,6 +341,7 @@ export type Database = {
           id?: string
           notes?: string | null
           parent_transaction_id?: string | null
+          recurring_expense_id?: string | null
           source_account_id?: string | null
           total_installments?: number | null
           transaction_date?: string
@@ -279,6 +362,7 @@ export type Database = {
           id?: string
           notes?: string | null
           parent_transaction_id?: string | null
+          recurring_expense_id?: string | null
           source_account_id?: string | null
           total_installments?: number | null
           transaction_date?: string
@@ -313,6 +397,13 @@ export type Database = {
             columns: ["parent_transaction_id"]
             isOneToOne: false
             referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_recurring_expense_id_fkey"
+            columns: ["recurring_expense_id"]
+            isOneToOne: false
+            referencedRelation: "recurring_expenses"
             referencedColumns: ["id"]
           },
           {

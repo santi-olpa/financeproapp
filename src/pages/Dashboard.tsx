@@ -120,6 +120,7 @@ export default function Dashboard() {
                 currency="ARS" 
                 size="xl"
                 className="block"
+                enablePrivacy
               />
               {totalPatrimonioUSD > 0 && (
                 <CurrencyDisplay 
@@ -148,6 +149,7 @@ export default function Dashboard() {
                 currency="ARS" 
                 size="lg"
                 className="text-income"
+                enablePrivacy
               />
               {monthlyIncomeUSD > 0 && (
                 <CurrencyDisplay 

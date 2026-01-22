@@ -4,6 +4,7 @@ export type Currency = 'ARS' | 'USD';
 export type AccountType = 'bank' | 'wallet' | 'cash' | 'investment' | 'crypto';
 export type TransactionType = 'income' | 'expense' | 'transfer' | 'adjustment';
 export type CategoryType = 'income' | 'expense';
+export type RecurringFrequency = 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly';
 
 export interface Profile {
   id: string;
@@ -11,6 +12,7 @@ export interface Profile {
   full_name: string | null;
   avatar_url: string | null;
   default_currency: Currency;
+  hide_amounts: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -60,6 +62,7 @@ export interface Transaction {
   total_installments: number | null;
   current_installment: number | null;
   parent_transaction_id: string | null;
+  recurring_expense_id: string | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -80,6 +83,36 @@ export interface Installment {
   is_paid: boolean;
   paid_date: string | null;
   created_at: string;
+}
+
+export interface PriceHistoryEntry {
+  amount: number;
+  effective_date: string;
+  notes?: string;
+}
+
+export interface RecurringExpense {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string | null;
+  amount: number;
+  currency: Currency;
+  category_id: string | null;
+  account_id: string | null;
+  frequency: RecurringFrequency;
+  start_date: string;
+  next_due_date: string;
+  end_date: string | null;
+  is_active: boolean;
+  last_generated_date: string | null;
+  price_history: PriceHistoryEntry[];
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  // Joined relations
+  category?: Category;
+  account?: Account;
 }
 
 export interface MonthlySnapshot {
@@ -126,4 +159,20 @@ export const ACCOUNT_TYPES: AccountTypeInfo[] = [
 export const CURRENCY_SYMBOLS: Record<Currency, string> = {
   ARS: '$',
   USD: 'US$',
+};
+
+export const FREQUENCY_LABELS: Record<RecurringFrequency, string> = {
+  weekly: 'Semanal',
+  biweekly: 'Quincenal',
+  monthly: 'Mensual',
+  quarterly: 'Trimestral',
+  yearly: 'Anual',
+};
+
+export const FREQUENCY_DAYS: Record<RecurringFrequency, number> = {
+  weekly: 7,
+  biweekly: 14,
+  monthly: 30,
+  quarterly: 90,
+  yearly: 365,
 };
