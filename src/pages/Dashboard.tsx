@@ -128,6 +128,7 @@ export default function Dashboard() {
                   currency="USD" 
                   size="lg"
                   className="block text-muted-foreground"
+                  enablePrivacy
                 />
               )}
             </div>
@@ -157,6 +158,7 @@ export default function Dashboard() {
                   currency="USD" 
                   size="sm"
                   className="block text-muted-foreground mt-1"
+                  enablePrivacy
                 />
               )}
             </CardContent>
@@ -238,6 +240,7 @@ export default function Dashboard() {
                         amount={Number(account.current_balance)} 
                         currency={account.currency} 
                         size="md"
+                        enablePrivacy
                       />
                     </CardContent>
                   </Card>

@@ -12,14 +12,14 @@ const PrivacyContext = createContext<PrivacyContextType | undefined>(undefined);
 
 export function PrivacyProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  const [hideAmounts, setHideAmounts] = useState(false);
+  const [hideAmounts, setHideAmounts] = useState(true); // Default to hidden
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     if (user) {
       loadPreference();
     } else {
-      setHideAmounts(false);
+      setHideAmounts(true); // Default to hidden when no user
       setIsLoading(false);
     }
   }, [user]);
@@ -32,7 +32,8 @@ export function PrivacyProvider({ children }: { children: ReactNode }) {
         .eq('user_id', user?.id)
         .maybeSingle();
       
-      setHideAmounts(data?.hide_amounts ?? false);
+      // Default to true (hidden) if no preference set
+      setHideAmounts(data?.hide_amounts ?? true);
     } catch (error) {
       console.error('Error loading privacy preference:', error);
     } finally {
