@@ -7,7 +7,8 @@ import {
   PieChart, 
   User,
   Tags,
-  LogOut
+  LogOut,
+  Receipt
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import {
@@ -30,6 +31,7 @@ const mainNavItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Inicio' },
   { to: '/accounts', icon: Wallet, label: 'Cuentas' },
   { to: '/transactions', icon: ArrowLeftRight, label: 'Movimientos' },
+  { to: '/expenses', icon: Receipt, label: 'Gastos' },
   { to: '/categories', icon: Tags, label: 'Categorías' },
   { to: '/reports', icon: PieChart, label: 'Reportes' },
 ];

@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
+import { PrivacyProvider } from "@/hooks/usePrivacy";
 import { LoadingScreen } from "@/components/ui/loading-spinner";
 import { AppLayout } from "@/components/layout/AppLayout";
 
@@ -18,6 +19,7 @@ import EditAccount from "./pages/accounts/EditAccount";
 import Transactions from "./pages/Transactions";
 import NewTransaction from "./pages/transactions/NewTransaction";
 import Categories from "./pages/Categories";
+import RecurringExpenses from "./pages/expenses/RecurringExpenses";
 import Reports from "./pages/Reports";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
@@ -58,6 +60,7 @@ const AppRoutes = () => (
       <Route path="/transactions" element={<Transactions />} />
       <Route path="/transactions/new" element={<NewTransaction />} />
       <Route path="/categories" element={<Categories />} />
+      <Route path="/expenses" element={<RecurringExpenses />} />
       <Route path="/reports" element={<Reports />} />
       <Route path="/profile" element={<Profile />} />
     </Route>
@@ -75,7 +78,9 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
-          <AppRoutes />
+          <PrivacyProvider>
+            <AppRoutes />
+          </PrivacyProvider>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

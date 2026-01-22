@@ -4,7 +4,7 @@ import {
   LayoutDashboard, 
   Wallet, 
   ArrowLeftRight, 
-  PieChart, 
+  Receipt, 
   User 
 } from 'lucide-react';
 
@@ -12,7 +12,7 @@ const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Inicio' },
   { to: '/accounts', icon: Wallet, label: 'Cuentas' },
   { to: '/transactions', icon: ArrowLeftRight, label: 'Movimientos' },
-  { to: '/reports', icon: PieChart, label: 'Reportes' },
+  { to: '/expenses', icon: Receipt, label: 'Gastos' },
 ];
 
 export function BottomNav() {
