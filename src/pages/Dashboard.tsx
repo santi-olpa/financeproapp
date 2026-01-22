@@ -17,11 +17,13 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { getMonthName, getCurrentPeriod } from '@/lib/format';
+import { useIsMobile } from '@/hooks/use-mobile';
 import type { Account, Transaction } from '@/types/finance';
 
 export default function Dashboard() {
   const { user } = useAuth();
   const { month, year } = getCurrentPeriod();
+  const isMobile = useIsMobile();
 
   // Fetch accounts
   const { data: accounts, isLoading: loadingAccounts } = useQuery({
@@ -106,7 +108,7 @@ export default function Dashboard() {
         }
       />
 
-      <div className="p-4 space-y-6 max-w-lg mx-auto">
+      <div className={`p-4 space-y-6 ${isMobile ? '' : 'max-w-lg mx-auto'}`}>
         {/* Patrimonio Total */}
         <Card className="glass border-border/50 overflow-hidden">
           <CardContent className="p-6">

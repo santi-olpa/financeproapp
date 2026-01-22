@@ -3,6 +3,7 @@ import { ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface PageHeaderProps {
   title: string;
@@ -20,10 +21,16 @@ export function PageHeader({
   className 
 }: PageHeaderProps) {
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
+
+  // On mobile, header is handled by MobileHeader in AppLayout
+  if (isMobile) {
+    return null;
+  }
 
   return (
     <header className={cn('sticky top-0 z-40 glass-strong safe-top', className)}>
-      <div className="flex items-center justify-between h-16 px-4 max-w-lg mx-auto">
+      <div className="flex items-center justify-between h-16 px-4 max-w-4xl mx-auto">
         <div className="flex items-center gap-3">
           {showBack && (
             <Button
