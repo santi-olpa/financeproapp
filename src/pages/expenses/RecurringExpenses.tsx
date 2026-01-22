@@ -23,8 +23,11 @@ import {
   Calendar, 
   TrendingDown,
   History,
-  DollarSign
+  DollarSign,
+  Play,
+  Loader2
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { format, addDays, addWeeks, addMonths, addYears, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -35,10 +38,12 @@ import { getMonthName, getCurrentPeriod } from '@/lib/format';
 export default function RecurringExpenses() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<RecurringExpense | null>(null);
   const [isPriceUpdateOpen, setIsPriceUpdateOpen] = useState(false);
   const [selectedExpenseForUpdate, setSelectedExpenseForUpdate] = useState<RecurringExpense | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
   const { month, year } = getCurrentPeriod();
 
   // Form state
@@ -275,6 +280,7 @@ export default function RecurringExpenses() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recurring-expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
       toast.success('Gasto recurrente eliminado');
     },
   });
@@ -292,6 +298,44 @@ export default function RecurringExpenses() {
       next_due_date: format(new Date(), 'yyyy-MM-dd'),
       notes: '',
     });
+  };
+
+  // Process recurring expenses manually
+  const handleProcessRecurring = async () => {
+    setIsProcessing(true);
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-recurring-expenses`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+          },
+        }
+      );
+      
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Error processing');
+      }
+      
+      queryClient.invalidateQueries({ queryKey: ['recurring-expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['accounts'] });
+      
+      if (result.processed === 0) {
+        toast.info('No hay gastos vencidos para procesar');
+      } else {
+        toast.success(`Se procesaron ${result.processed} gastos recurrentes`);
+      }
+    } catch (error) {
+      console.error('Error processing recurring expenses:', error);
+      toast.error('Error al procesar gastos recurrentes');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const openEdit = (expense: RecurringExpense) => {
@@ -517,6 +561,29 @@ export default function RecurringExpenses() {
 
           {/* Monthly Expenses Tab */}
           <TabsContent value="monthly" className="space-y-4">
+            {/* Action buttons */}
+            <div className="flex gap-2">
+              <Button 
+                onClick={() => navigate('/transactions/new?type=expense')}
+                className="flex-1"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Nuevo Gasto
+              </Button>
+              <Button 
+                variant="outline"
+                onClick={handleProcessRecurring}
+                disabled={isProcessing}
+              >
+                {isProcessing ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Play className="h-4 w-4 mr-2" />
+                )}
+                Procesar Vencidos
+              </Button>
+            </div>
+
             {/* Summary Card */}
             <Card className="glass border-border/50">
               <CardContent className="p-4">
