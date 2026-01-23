@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -7,6 +8,7 @@ import { CurrencyDisplay } from '@/components/ui/currency-display';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
+import { PeriodSelector } from '@/components/reports/PeriodSelector';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -22,7 +24,9 @@ import type { Account, Transaction } from '@/types/finance';
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const { month, year } = getCurrentPeriod();
+  const currentPeriod = getCurrentPeriod();
+  const [month, setMonth] = useState(currentPeriod.month);
+  const [year, setYear] = useState(currentPeriod.year);
   const isMobile = useIsMobile();
 
   // Fetch accounts
@@ -99,6 +103,16 @@ export default function Dashboard() {
     return (
       <div className="min-h-screen bg-background">
         <div className="p-4 space-y-6">
+          {/* Period Selector */}
+          <div className="flex justify-center">
+            <PeriodSelector
+              month={month}
+              year={year}
+              onMonthChange={setMonth}
+              onYearChange={setYear}
+            />
+          </div>
+          
           {/* Patrimonio Total */}
           <Card className="glass border-border/50 overflow-hidden">
             <CardContent className="p-6">
@@ -284,6 +298,7 @@ export default function Dashboard() {
                         amount={Number(transaction.amount)} 
                         currency={transaction.currency}
                         showSign
+                        isExpense={transaction.transaction_type === 'expense'}
                         size="sm"
                       />
                     </CardContent>
@@ -304,11 +319,19 @@ export default function Dashboard() {
         title="Finance Pro" 
         subtitle={`${getMonthName(month)} ${year}`}
         action={
-          <Link to="/transactions/new">
-            <Button size="icon" className="rounded-full">
-              <Plus className="h-5 w-5" />
-            </Button>
-          </Link>
+          <div className="flex items-center gap-4">
+            <PeriodSelector
+              month={month}
+              year={year}
+              onMonthChange={setMonth}
+              onYearChange={setYear}
+            />
+            <Link to="/transactions/new">
+              <Button size="icon" className="rounded-full">
+                <Plus className="h-5 w-5" />
+              </Button>
+            </Link>
+          </div>
         }
       />
 
@@ -521,6 +544,7 @@ export default function Dashboard() {
                           amount={Number(transaction.amount)} 
                           currency={transaction.currency}
                           showSign
+                          isExpense={transaction.transaction_type === 'expense'}
                           size="sm"
                         />
                       </CardContent>
