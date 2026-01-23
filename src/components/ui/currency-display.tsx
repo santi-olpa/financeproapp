@@ -9,6 +9,7 @@ interface CurrencyDisplayProps {
   currency: Currency;
   compact?: boolean;
   showSign?: boolean;
+  isExpense?: boolean; // Explicitly marks this as expense (will show negative)
   size?: 'sm' | 'md' | 'lg' | 'xl';
   className?: string;
   enablePrivacy?: boolean;
@@ -19,18 +20,22 @@ export function CurrencyDisplay({
   currency,
   compact = false,
   showSign = false,
+  isExpense = false,
   size = 'md',
   className,
   enablePrivacy = false,
 }: CurrencyDisplayProps) {
   const { hideAmounts, toggleHideAmounts } = usePrivacy();
   
+  // For display purposes, if marked as expense, show as negative
+  const displayAmount = isExpense ? -Math.abs(amount) : amount;
+  
   const formatted = compact 
-    ? formatCompactCurrency(amount, currency)
-    : formatCurrency(amount, currency);
+    ? formatCompactCurrency(Math.abs(amount), currency)
+    : formatCurrency(Math.abs(amount), currency);
 
-  const isPositive = amount > 0;
-  const isNegative = amount < 0;
+  const isPositive = displayAmount > 0;
+  const isNegative = displayAmount < 0 || isExpense;
 
   const sizeClasses = {
     sm: 'text-sm',
@@ -72,12 +77,13 @@ export function CurrencyDisplay({
         className={cn(
           'font-mono animate-number tabular-nums',
           sizeClasses[size],
-          showSign && isPositive && 'text-income',
-          showSign && isNegative && 'text-expense',
-        )}
-      >
-        {showSign && isPositive && '+'}
-        {formatted}
+        showSign && isPositive && 'text-income',
+        showSign && isNegative && 'text-expense',
+      )}
+    >
+      {showSign && isPositive && '+'}
+      {showSign && isNegative && '-'}
+      {formatted}
       </span>
       {enablePrivacy && (
         <button
