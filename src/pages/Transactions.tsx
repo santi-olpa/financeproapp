@@ -13,10 +13,12 @@ import { formatRelativeDate } from '@/lib/format';
 import type { Transaction } from '@/types/finance';
 import { Input } from '@/components/ui/input';
 import { useState } from 'react';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 export default function Transactions() {
   const { user } = useAuth();
   const [search, setSearch] = useState('');
+  const isMobile = useIsMobile();
 
   const { data: transactions, isLoading } = useQuery({
     queryKey: ['transactions'],
@@ -70,6 +72,98 @@ export default function Transactions() {
     );
   }
 
+  const TransactionCard = ({ transaction }: { transaction: (typeof transactions)[number] }) => (
+    <Link to={`/transactions/${transaction.id}`}>
+      <Card className="glass border-border/50 hover:border-primary/50 transition-colors">
+        <CardContent className="p-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className={`rounded-full p-2 ${
+              transaction.transaction_type === 'income' 
+                ? 'bg-income/10' 
+                : transaction.transaction_type === 'expense'
+                ? 'bg-expense/10'
+                : 'bg-transfer/10'
+            }`}>
+              {transaction.transaction_type === 'income' ? (
+                <TrendingUp className="h-4 w-4 text-income" />
+              ) : transaction.transaction_type === 'expense' ? (
+                <TrendingDown className="h-4 w-4 text-expense" />
+              ) : (
+                <ArrowLeftRight className="h-4 w-4 text-transfer" />
+              )}
+            </div>
+            <div>
+              <p className="text-sm font-medium text-foreground">
+                {transaction.description || transaction.category?.name || 'Sin descripción'}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {transaction.account?.name || 'Sin cuenta'}
+              </p>
+            </div>
+          </div>
+          <CurrencyDisplay 
+            amount={Number(transaction.amount) * (transaction.transaction_type === 'expense' ? -1 : 1)} 
+            currency={transaction.currency}
+            showSign
+            size="sm"
+          />
+        </CardContent>
+      </Card>
+    </Link>
+  );
+
+  // Mobile Layout
+  if (isMobile) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="p-4 space-y-4">
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar movimientos..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+
+          {(!transactions || transactions.length === 0) ? (
+            <EmptyState
+              icon={ArrowLeftRight}
+              title="Sin movimientos"
+              description="Registra tu primer ingreso o egreso para comenzar"
+              action={
+                <Link to="/transactions/new">
+                  <Button>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Nuevo movimiento
+                  </Button>
+                </Link>
+              }
+            />
+          ) : (
+            <div className="space-y-6">
+              {Object.entries(filteredGroups || {}).map(([date, dayTransactions]) => (
+                <div key={date}>
+                  <p className="text-sm font-medium text-muted-foreground mb-2">
+                    {formatRelativeDate(date)}
+                  </p>
+                  <div className="space-y-2">
+                    {dayTransactions?.map((transaction) => (
+                      <TransactionCard key={transaction.id} transaction={transaction} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Desktop Layout - wider with better spacing
   return (
     <div className="min-h-screen bg-background">
       <PageHeader 
@@ -84,84 +178,50 @@ export default function Transactions() {
         }
       />
 
-      <div className="p-4 space-y-4 max-w-lg mx-auto">
-        {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar movimientos..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-
-        {(!transactions || transactions.length === 0) ? (
-          <EmptyState
-            icon={ArrowLeftRight}
-            title="Sin movimientos"
-            description="Registra tu primer ingreso o egreso para comenzar"
-            action={
-              <Link to="/transactions/new">
-                <Button>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Nuevo movimiento
-                </Button>
-              </Link>
-            }
-          />
-        ) : (
-          <div className="space-y-6">
-            {Object.entries(filteredGroups || {}).map(([date, dayTransactions]) => (
-              <div key={date}>
-                <p className="text-sm font-medium text-muted-foreground mb-2">
-                  {formatRelativeDate(date)}
-                </p>
-                <div className="space-y-2">
-                  {dayTransactions?.map((transaction) => (
-                    <Link key={transaction.id} to={`/transactions/${transaction.id}`}>
-                      <Card className="glass border-border/50 hover:border-primary/50 transition-colors">
-                        <CardContent className="p-3 flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className={`rounded-full p-2 ${
-                              transaction.transaction_type === 'income' 
-                                ? 'bg-income/10' 
-                                : transaction.transaction_type === 'expense'
-                                ? 'bg-expense/10'
-                                : 'bg-transfer/10'
-                            }`}>
-                              {transaction.transaction_type === 'income' ? (
-                                <TrendingUp className="h-4 w-4 text-income" />
-                              ) : transaction.transaction_type === 'expense' ? (
-                                <TrendingDown className="h-4 w-4 text-expense" />
-                              ) : (
-                                <ArrowLeftRight className="h-4 w-4 text-transfer" />
-                              )}
-                            </div>
-                            <div>
-                              <p className="text-sm font-medium text-foreground">
-                                {transaction.description || transaction.category?.name || 'Sin descripción'}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {transaction.account?.name || 'Sin cuenta'}
-                              </p>
-                            </div>
-                          </div>
-                          <CurrencyDisplay 
-                            amount={Number(transaction.amount) * (transaction.transaction_type === 'expense' ? -1 : 1)} 
-                            currency={transaction.currency}
-                            showSign
-                            size="sm"
-                          />
-                        </CardContent>
-                      </Card>
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            ))}
+      <div className="p-6">
+        <div className="max-w-5xl mx-auto">
+          {/* Search */}
+          <div className="relative mb-6 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar movimientos..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-10"
+            />
           </div>
-        )}
+
+          {(!transactions || transactions.length === 0) ? (
+            <EmptyState
+              icon={ArrowLeftRight}
+              title="Sin movimientos"
+              description="Registra tu primer ingreso o egreso para comenzar"
+              action={
+                <Link to="/transactions/new">
+                  <Button>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Nuevo movimiento
+                  </Button>
+                </Link>
+              }
+            />
+          ) : (
+            <div className="space-y-8">
+              {Object.entries(filteredGroups || {}).map(([date, dayTransactions]) => (
+                <div key={date}>
+                  <p className="text-sm font-medium text-muted-foreground mb-3">
+                    {formatRelativeDate(date)}
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {dayTransactions?.map((transaction) => (
+                      <TransactionCard key={transaction.id} transaction={transaction} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

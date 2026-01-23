@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { CurrencyDisplay } from '@/components/ui/currency-display';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { EmptyState } from '@/components/ui/empty-state';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { 
   Plus, 
   Wallet,
@@ -60,6 +61,7 @@ export default function Accounts() {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const isMobile = useIsMobile();
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const { data: accounts, isLoading } = useQuery({
@@ -126,6 +128,145 @@ export default function Accounts() {
     );
   }
 
+  const AccountCard = ({ account }: { account: Account }) => (
+    <Card 
+      className="glass border-border/50"
+      style={{ borderLeftColor: account.color, borderLeftWidth: '3px' }}
+    >
+      <CardContent className="p-4 flex items-center justify-between">
+        <Link to={`/accounts/${account.id}`} className="flex-1">
+          <div>
+            <p className="font-medium text-foreground">{account.name}</p>
+            {account.alias && (
+              <p className="text-xs text-muted-foreground">{account.alias}</p>
+            )}
+          </div>
+        </Link>
+        
+        <div className="flex items-center gap-2">
+          <CurrencyDisplay 
+            amount={Number(account.current_balance)} 
+            currency={account.currency}
+            size="md"
+          />
+          
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon">
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem asChild>
+                <Link to={`/accounts/${account.id}/edit`}>
+                  <Pencil className="h-4 w-4 mr-2" />
+                  Editar
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                className="text-destructive"
+                onClick={() => setDeleteId(account.id)}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Eliminar
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
+  // Mobile Layout
+  if (isMobile) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="p-4 space-y-6">
+          {/* Totales */}
+          <Card className="glass border-border/50">
+            <CardContent className="p-4">
+              <p className="text-sm text-muted-foreground mb-2">Total disponible</p>
+              <div className="space-y-1">
+                <CurrencyDisplay amount={totalARS} currency="ARS" size="xl" />
+                {totalUSD > 0 && (
+                  <CurrencyDisplay 
+                    amount={totalUSD} 
+                    currency="USD" 
+                    size="lg" 
+                    className="block text-muted-foreground" 
+                  />
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Lista de cuentas */}
+          {(!accounts || accounts.length === 0) ? (
+            <EmptyState
+              icon={Wallet}
+              title="Sin cuentas"
+              description="Agrega tus cuentas bancarias, billeteras virtuales o efectivo"
+              action={
+                <Link to="/accounts/new">
+                  <Button>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Agregar cuenta
+                  </Button>
+                </Link>
+              }
+            />
+          ) : (
+            <div className="space-y-6">
+              {Object.entries(groupedAccounts || {}).map(([type, typeAccounts]) => {
+                const Icon = accountTypeIcons[type as AccountType];
+                const label = accountTypeLabels[type as AccountType];
+                
+                return (
+                  <div key={type}>
+                    <div className="flex items-center gap-2 mb-3">
+                      <Icon className="h-4 w-4 text-muted-foreground" />
+                      <h3 className="text-sm font-medium text-muted-foreground">{label}</h3>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      {typeAccounts.map((account) => (
+                        <AccountCard key={account.id} account={account} />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>¿Eliminar cuenta?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Esta acción no se puede deshacer. Se eliminarán también todos los movimientos asociados.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  if (deleteId) deleteMutation.mutate(deleteId);
+                  setDeleteId(null);
+                }}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Eliminar
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    );
+  }
+
+  // Desktop Layout - side by side with summary
   return (
     <div className="min-h-screen bg-background">
       <PageHeader 
@@ -140,109 +281,80 @@ export default function Accounts() {
         }
       />
 
-      <div className="p-4 space-y-6 max-w-lg mx-auto">
-        {/* Totales */}
-        <Card className="glass border-border/50">
-          <CardContent className="p-4">
-            <p className="text-sm text-muted-foreground mb-2">Total disponible</p>
-            <div className="space-y-1">
-              <CurrencyDisplay amount={totalARS} currency="ARS" size="xl" />
-              {totalUSD > 0 && (
-                <CurrencyDisplay 
-                  amount={totalUSD} 
-                  currency="USD" 
-                  size="lg" 
-                  className="block text-muted-foreground" 
+      <div className="p-6">
+        <div className="max-w-6xl mx-auto">
+          <div className="grid grid-cols-12 gap-6">
+            {/* Totales - Left column */}
+            <div className="col-span-4">
+              <Card className="glass border-border/50 sticky top-6">
+                <CardContent className="p-6">
+                  <p className="text-sm text-muted-foreground mb-3">Total disponible</p>
+                  <div className="space-y-2">
+                    <CurrencyDisplay amount={totalARS} currency="ARS" size="xl" />
+                    {totalUSD > 0 && (
+                      <CurrencyDisplay 
+                        amount={totalUSD} 
+                        currency="USD" 
+                        size="lg" 
+                        className="block text-muted-foreground" 
+                      />
+                    )}
+                  </div>
+
+                  <div className="mt-6 pt-6 border-t border-border/50">
+                    <Link to="/accounts/new">
+                      <Button className="w-full">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Nueva cuenta
+                      </Button>
+                    </Link>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Lista de cuentas - Right column */}
+            <div className="col-span-8">
+              {(!accounts || accounts.length === 0) ? (
+                <EmptyState
+                  icon={Wallet}
+                  title="Sin cuentas"
+                  description="Agrega tus cuentas bancarias, billeteras virtuales o efectivo"
+                  action={
+                    <Link to="/accounts/new">
+                      <Button>
+                        <Plus className="h-4 w-4 mr-2" />
+                        Agregar cuenta
+                      </Button>
+                    </Link>
+                  }
                 />
+              ) : (
+                <div className="grid grid-cols-2 gap-6">
+                  {Object.entries(groupedAccounts || {}).map(([type, typeAccounts]) => {
+                    const Icon = accountTypeIcons[type as AccountType];
+                    const label = accountTypeLabels[type as AccountType];
+                    
+                    return (
+                      <div key={type} className="col-span-2">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Icon className="h-4 w-4 text-muted-foreground" />
+                          <h3 className="text-sm font-medium text-muted-foreground">{label}</h3>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-3">
+                          {typeAccounts.map((account) => (
+                            <AccountCard key={account.id} account={account} />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Lista de cuentas */}
-        {(!accounts || accounts.length === 0) ? (
-          <EmptyState
-            icon={Wallet}
-            title="Sin cuentas"
-            description="Agrega tus cuentas bancarias, billeteras virtuales o efectivo"
-            action={
-              <Link to="/accounts/new">
-                <Button>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Agregar cuenta
-                </Button>
-              </Link>
-            }
-          />
-        ) : (
-          <div className="space-y-6">
-            {Object.entries(groupedAccounts || {}).map(([type, typeAccounts]) => {
-              const Icon = accountTypeIcons[type as AccountType];
-              const label = accountTypeLabels[type as AccountType];
-              
-              return (
-                <div key={type}>
-                  <div className="flex items-center gap-2 mb-3">
-                    <Icon className="h-4 w-4 text-muted-foreground" />
-                    <h3 className="text-sm font-medium text-muted-foreground">{label}</h3>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    {typeAccounts.map((account) => (
-                      <Card 
-                        key={account.id} 
-                        className="glass border-border/50"
-                        style={{ borderLeftColor: account.color, borderLeftWidth: '3px' }}
-                      >
-                        <CardContent className="p-4 flex items-center justify-between">
-                          <Link to={`/accounts/${account.id}`} className="flex-1">
-                            <div>
-                              <p className="font-medium text-foreground">{account.name}</p>
-                              {account.alias && (
-                                <p className="text-xs text-muted-foreground">{account.alias}</p>
-                              )}
-                            </div>
-                          </Link>
-                          
-                          <div className="flex items-center gap-2">
-                            <CurrencyDisplay 
-                              amount={Number(account.current_balance)} 
-                              currency={account.currency}
-                              size="md"
-                            />
-                            
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon">
-                                  <MoreVertical className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem asChild>
-                                  <Link to={`/accounts/${account.id}/edit`}>
-                                    <Pencil className="h-4 w-4 mr-2" />
-                                    Editar
-                                  </Link>
-                                </DropdownMenuItem>
-                                <DropdownMenuItem 
-                                  className="text-destructive"
-                                  onClick={() => setDeleteId(account.id)}
-                                >
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Eliminar
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
           </div>
-        )}
+        </div>
       </div>
 
       <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
