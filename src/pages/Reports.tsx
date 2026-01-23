@@ -11,12 +11,14 @@ import { MonthlyTrendChart } from '@/components/reports/MonthlyTrendChart';
 import { RecurringCostsChart } from '@/components/reports/RecurringCostsChart';
 import { PeriodSelector } from '@/components/reports/PeriodSelector';
 import { SummaryCards } from '@/components/reports/SummaryCards';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 export default function Reports() {
   const currentPeriod = getCurrentPeriod();
   const [month, setMonth] = useState(currentPeriod.month);
   const [year, setYear] = useState(currentPeriod.year);
   const [currency, setCurrency] = useState<Currency>('ARS');
+  const isMobile = useIsMobile();
 
   // Fetch all transactions for the year (for monthly trend)
   const { data: yearTransactions = [], isLoading: loadingYear } = useQuery({
@@ -101,79 +103,159 @@ export default function Reports() {
     );
   }
 
+  // Mobile Layout
+  if (isMobile) {
+    return (
+      <div className="min-h-screen bg-background pb-24">
+        <div className="p-4 space-y-6">
+          {/* Period and Currency Selector */}
+          <div className="flex flex-col gap-3">
+            <PeriodSelector
+              month={month}
+              year={year}
+              onMonthChange={setMonth}
+              onYearChange={setYear}
+            />
+            
+            <Tabs value={currency} onValueChange={(v) => setCurrency(v as Currency)} className="w-full">
+              <TabsList className="w-full">
+                <TabsTrigger value="ARS" className="flex-1">ARS</TabsTrigger>
+                <TabsTrigger value="USD" className="flex-1">USD</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+
+          {/* Summary Cards */}
+          <SummaryCards 
+            totalIncome={totalIncome}
+            totalExpense={totalExpense}
+            currency={currency}
+          />
+
+          {/* Tabs for different views */}
+          <Tabs defaultValue="categories" className="w-full">
+            <TabsList className="w-full">
+              <TabsTrigger value="categories" className="flex-1">Categorías</TabsTrigger>
+              <TabsTrigger value="trends" className="flex-1">Tendencias</TabsTrigger>
+              <TabsTrigger value="fixed" className="flex-1">Fijos</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="categories" className="mt-4 space-y-4">
+              <CategoryPieChart
+                transactions={monthTransactions}
+                categories={categories}
+                type="expense"
+                currency={currency}
+                title="Gastos por Categoría"
+              />
+              
+              <CategoryPieChart
+                transactions={monthTransactions}
+                categories={categories}
+                type="income"
+                currency={currency}
+                title="Ingresos por Categoría"
+              />
+            </TabsContent>
+
+            <TabsContent value="trends" className="mt-4">
+              <MonthlyTrendChart
+                transactions={yearTransactions}
+                currency={currency}
+                year={year}
+              />
+            </TabsContent>
+
+            <TabsContent value="fixed" className="mt-4">
+              <RecurringCostsChart
+                recurringExpenses={recurringExpenses}
+                currency={currency}
+              />
+            </TabsContent>
+          </Tabs>
+        </div>
+      </div>
+    );
+  }
+
+  // Desktop Layout - grid with charts side by side
   return (
-    <div className="min-h-screen bg-background pb-24">
+    <div className="min-h-screen bg-background pb-8">
       <PageHeader 
         title="Reportes" 
         subtitle="Análisis de tus finanzas"
       />
 
-      <div className="p-4 max-w-lg mx-auto space-y-6">
-        {/* Period and Currency Selector */}
-        <div className="flex flex-col gap-3">
-          <PeriodSelector
-            month={month}
-            year={year}
-            onMonthChange={setMonth}
-            onYearChange={setYear}
-          />
-          
-          <Tabs value={currency} onValueChange={(v) => setCurrency(v as Currency)} className="w-full">
-            <TabsList className="w-full">
-              <TabsTrigger value="ARS" className="flex-1">ARS</TabsTrigger>
-              <TabsTrigger value="USD" className="flex-1">USD</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
-
-        {/* Summary Cards */}
-        <SummaryCards 
-          totalIncome={totalIncome}
-          totalExpense={totalExpense}
-          currency={currency}
-        />
-
-        {/* Tabs for different views */}
-        <Tabs defaultValue="categories" className="w-full">
-          <TabsList className="w-full">
-            <TabsTrigger value="categories" className="flex-1">Categorías</TabsTrigger>
-            <TabsTrigger value="trends" className="flex-1">Tendencias</TabsTrigger>
-            <TabsTrigger value="fixed" className="flex-1">Fijos</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="categories" className="mt-4 space-y-4">
-            <CategoryPieChart
-              transactions={monthTransactions}
-              categories={categories}
-              type="expense"
-              currency={currency}
-              title="Gastos por Categoría"
+      <div className="p-6">
+        <div className="max-w-7xl mx-auto space-y-6">
+          {/* Top Controls Row */}
+          <div className="flex items-center justify-between gap-6">
+            <PeriodSelector
+              month={month}
+              year={year}
+              onMonthChange={setMonth}
+              onYearChange={setYear}
             />
             
-            <CategoryPieChart
-              transactions={monthTransactions}
-              categories={categories}
-              type="income"
-              currency={currency}
-              title="Ingresos por Categoría"
-            />
-          </TabsContent>
+            <Tabs value={currency} onValueChange={(v) => setCurrency(v as Currency)}>
+              <TabsList>
+                <TabsTrigger value="ARS" className="px-6">ARS</TabsTrigger>
+                <TabsTrigger value="USD" className="px-6">USD</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
 
-          <TabsContent value="trends" className="mt-4">
-            <MonthlyTrendChart
-              transactions={yearTransactions}
-              currency={currency}
-              year={year}
-            />
-          </TabsContent>
+          {/* Summary Cards - horizontal row */}
+          <SummaryCards 
+            totalIncome={totalIncome}
+            totalExpense={totalExpense}
+            currency={currency}
+          />
 
-          <TabsContent value="fixed" className="mt-4">
-            <RecurringCostsChart
-              recurringExpenses={recurringExpenses}
-              currency={currency}
-            />
-          </TabsContent>
-        </Tabs>
+          {/* Charts Grid */}
+          <Tabs defaultValue="categories" className="w-full">
+            <TabsList className="mb-6">
+              <TabsTrigger value="categories" className="px-8">Categorías</TabsTrigger>
+              <TabsTrigger value="trends" className="px-8">Tendencias</TabsTrigger>
+              <TabsTrigger value="fixed" className="px-8">Fijos</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="categories" className="mt-0">
+              <div className="grid grid-cols-2 gap-6">
+                <CategoryPieChart
+                  transactions={monthTransactions}
+                  categories={categories}
+                  type="expense"
+                  currency={currency}
+                  title="Gastos por Categoría"
+                />
+                
+                <CategoryPieChart
+                  transactions={monthTransactions}
+                  categories={categories}
+                  type="income"
+                  currency={currency}
+                  title="Ingresos por Categoría"
+                />
+              </div>
+            </TabsContent>
+
+            <TabsContent value="trends" className="mt-0">
+              <MonthlyTrendChart
+                transactions={yearTransactions}
+                currency={currency}
+                year={year}
+              />
+            </TabsContent>
+
+            <TabsContent value="fixed" className="mt-0">
+              <RecurringCostsChart
+                recurringExpenses={recurringExpenses}
+                currency={currency}
+              />
+            </TabsContent>
+          </Tabs>
+        </div>
       </div>
     </div>
   );
