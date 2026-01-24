@@ -8,7 +8,8 @@ import {
   User,
   Tags,
   LogOut,
-  Receipt
+  Receipt,
+  Sparkles
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import {
@@ -40,7 +41,11 @@ const userNavItems = [
   { to: '/profile', icon: User, label: 'Perfil' },
 ];
 
-export function AppSidebar() {
+interface AppSidebarProps {
+  onAiAssistantClick?: () => void;
+}
+
+export function AppSidebar({ onAiAssistantClick }: AppSidebarProps) {
   const location = useLocation();
   const { state } = useSidebar();
   const { user, signOut } = useAuth();
@@ -89,6 +94,25 @@ export function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* AI Assistant Button */}
+        <SidebarGroup>
+          <SidebarGroupLabel>Herramientas</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton 
+                  onClick={onAiAssistantClick}
+                  tooltip="Asistente IA"
+                  className="text-primary hover:text-primary"
+                >
+                  <Sparkles className="h-4 w-4" />
+                  <span>Asistente IA</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useMemo, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -18,26 +18,44 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { TrendingUp, TrendingDown, ArrowLeftRight, Info } from 'lucide-react';
+import { TrendingUp, TrendingDown, ArrowLeftRight, Info, Sparkles } from 'lucide-react';
 import type { TransactionType, Currency, Account, Category } from '@/types/finance';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatCurrency } from '@/lib/format';
 import { addMonths, format } from 'date-fns';
+import { Badge } from '@/components/ui/badge';
+
+// Type for AI-parsed state
+interface AiParsedState {
+  aiParsed?: boolean;
+  amount?: number;
+  currency?: Currency;
+  type?: TransactionType;
+  description?: string | null;
+  accountId?: string | null;
+  categoryId?: string | null;
+  sourceAccountId?: string | null;
+  destinationAccountId?: string | null;
+}
 
 export default function NewTransaction() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const [transactionType, setTransactionType] = useState<TransactionType>('expense');
-  const [amount, setAmount] = useState('');
-  const [currency, setCurrency] = useState<Currency>('ARS');
-  const [description, setDescription] = useState('');
-  const [accountId, setAccountId] = useState('');
-  const [categoryId, setCategoryId] = useState('');
-  const [sourceAccountId, setSourceAccountId] = useState('');
-  const [destinationAccountId, setDestinationAccountId] = useState('');
+  // Get AI-parsed data from navigation state
+  const aiState = (location.state as AiParsedState) || {};
+
+  const [transactionType, setTransactionType] = useState<TransactionType>(aiState.type || 'expense');
+  const [amount, setAmount] = useState(aiState.amount?.toString() || '');
+  const [currency, setCurrency] = useState<Currency>(aiState.currency || 'ARS');
+  const [description, setDescription] = useState(aiState.description || '');
+  const [accountId, setAccountId] = useState(aiState.accountId || '');
+  const [categoryId, setCategoryId] = useState(aiState.categoryId || '');
+  const [sourceAccountId, setSourceAccountId] = useState(aiState.sourceAccountId || '');
+  const [destinationAccountId, setDestinationAccountId] = useState(aiState.destinationAccountId || '');
   const [transactionDate, setTransactionDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
   
@@ -45,6 +63,16 @@ export default function NewTransaction() {
   const [hasInstallments, setHasInstallments] = useState(false);
   const [totalInstallments, setTotalInstallments] = useState('');
   const [interestRate, setInterestRate] = useState('0');
+
+  // Track if prefilled by AI
+  const [prefilledByAi, setPrefilledByAi] = useState(aiState.aiParsed || false);
+
+  // Clear navigation state after reading to prevent re-triggering
+  useEffect(() => {
+    if (aiState.aiParsed) {
+      window.history.replaceState({}, document.title);
+    }
+  }, [aiState.aiParsed]);
 
   // Fetch accounts
   const { data: accounts } = useQuery({
@@ -262,6 +290,17 @@ export default function NewTransaction() {
       <PageHeader title="Nuevo Movimiento" showBack />
 
       <form onSubmit={handleSubmit} className="p-4 space-y-6 max-w-lg mx-auto">
+        {/* AI Prefilled indicator */}
+        {prefilledByAi && (
+          <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/10 border border-primary/20">
+            <Sparkles className="h-4 w-4 text-primary" />
+            <span className="text-sm text-primary">
+              Pre-llenado por el Asistente IA. Verificá y ajustá si es necesario.
+            </span>
+            <Badge variant="secondary" className="ml-auto">IA</Badge>
+          </div>
+        )}
+
         {/* Tipo de transacción */}
         <Tabs value={transactionType} onValueChange={(v) => setTransactionType(v as TransactionType)}>
           <TabsList className="grid w-full grid-cols-3">
