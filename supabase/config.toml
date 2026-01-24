@@ -4,4 +4,4 @@ project_id = "oyitbpnlghdraucgnooa"
 verify_jwt = false
 
 [functions.ai-transaction-parser]
-verify_jwt = true
+verify_jwt = false
