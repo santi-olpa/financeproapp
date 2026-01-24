@@ -35,6 +35,13 @@ const accountTypeIcons: Record<AccountType, typeof Wallet> = {
   crypto: Bitcoin,
 };
 
+const getAccountIcon = (accountType: AccountType | undefined | null) => {
+  if (!accountType || !accountTypeIcons[accountType]) {
+    return Wallet; // fallback icon
+  }
+  return accountTypeIcons[accountType];
+};
+
 export default function Dashboard() {
   const { user } = useAuth();
   const currentPeriod = getCurrentPeriod();
@@ -222,7 +229,7 @@ export default function Dashboard() {
             ) : (
               <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4 snap-x snap-mandatory">
                 {accounts.slice(0, 5).map((account) => {
-                  const Icon = accountTypeIcons[account.account_type];
+                  const Icon = getAccountIcon(account.account_type);
                   return (
                     <Link key={account.id} to={`/accounts/${account.id}`} className="snap-start">
                       <Card 
@@ -471,8 +478,8 @@ export default function Dashboard() {
               />
             ) : (
               <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
-                {accounts.map((account) => {
-                  const Icon = accountTypeIcons[account.account_type];
+              {accounts.map((account) => {
+                  const Icon = getAccountIcon(account.account_type);
                   const isUSD = account.currency === 'USD';
                   return (
                     <Link key={account.id} to={`/accounts/${account.id}`}>
