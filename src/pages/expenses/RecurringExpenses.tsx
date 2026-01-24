@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { 
   Plus, 
   Repeat, 
@@ -25,11 +26,12 @@ import {
   History,
   DollarSign,
   Play,
-  Loader2
+  Loader2,
+  CreditCard
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { format, addDays, addWeeks, addMonths, addYears, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
+import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import type { RecurringExpense, Category, Account, Currency, RecurringFrequency, PriceHistoryEntry, Transaction } from '@/types/finance';
 import { FREQUENCY_LABELS, CURRENCY_SYMBOLS } from '@/types/finance';
@@ -39,6 +41,7 @@ export default function RecurringExpenses() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<RecurringExpense | null>(null);
   const [isPriceUpdateOpen, setIsPriceUpdateOpen] = useState(false);
@@ -72,15 +75,10 @@ export default function RecurringExpenses() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('recurring_expenses')
-        .select(`
-          *,
-          category:categories(*),
-          account:accounts(*)
-        `)
+        .select(`*, category:categories(*), account:accounts(*)`)
         .order('next_due_date', { ascending: true });
       
       if (error) throw error;
-      
       return (data || []).map(item => ({
         ...item,
         price_history: (item.price_history as unknown as PriceHistoryEntry[]) || []
@@ -98,7 +96,6 @@ export default function RecurringExpenses() {
         .select('*')
         .eq('category_type', 'expense')
         .order('name');
-      
       if (error) throw error;
       return data as Category[];
     },
@@ -114,14 +111,13 @@ export default function RecurringExpenses() {
         .select('*')
         .eq('is_active', true)
         .order('name');
-      
       if (error) throw error;
       return data as Account[];
     },
     enabled: !!user,
   });
 
-  // Fetch current month transactions for expenses report
+  // Fetch current month transactions
   const { data: monthlyTransactions } = useQuery({
     queryKey: ['transactions', 'expense', month, year],
     queryFn: async () => {
@@ -131,10 +127,7 @@ export default function RecurringExpenses() {
       
       const { data, error } = await supabase
         .from('transactions')
-        .select(`
-          *,
-          category:categories(*)
-        `)
+        .select(`*, category:categories(*)`)
         .eq('transaction_type', 'expense')
         .gte('transaction_date', startDate)
         .lte('transaction_date', endDate)
@@ -146,15 +139,10 @@ export default function RecurringExpenses() {
     enabled: !!user,
   });
 
-  // Create/Update mutation
+  // Mutations
   const saveMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
-      const initialPriceHistory = [{
-        amount: parseFloat(data.amount),
-        effective_date: data.start_date,
-        notes: 'Precio inicial'
-      }];
-
+      const initialPriceHistory = [{ amount: parseFloat(data.amount), effective_date: data.start_date, notes: 'Precio inicial' }];
       const payload = {
         user_id: user!.id,
         name: data.name,
@@ -173,23 +161,11 @@ export default function RecurringExpenses() {
       if (editingExpense) {
         const { error } = await supabase
           .from('recurring_expenses')
-          .update({
-            name: payload.name,
-            description: payload.description,
-            category_id: payload.category_id,
-            account_id: payload.account_id,
-            frequency: payload.frequency,
-            next_due_date: payload.next_due_date,
-            notes: payload.notes,
-          })
+          .update({ name: payload.name, description: payload.description, category_id: payload.category_id, account_id: payload.account_id, frequency: payload.frequency, next_due_date: payload.next_due_date, notes: payload.notes })
           .eq('id', editingExpense.id);
-        
         if (error) throw error;
       } else {
-        const { error } = await supabase
-          .from('recurring_expenses')
-          .insert([payload] as any);
-        
+        const { error } = await supabase.from('recurring_expenses').insert([payload] as any);
         if (error) throw error;
       }
     },
@@ -200,66 +176,30 @@ export default function RecurringExpenses() {
       resetForm();
       toast.success(editingExpense ? 'Gasto recurrente actualizado' : 'Gasto recurrente creado');
     },
-    onError: (error) => {
-      console.error('Error saving recurring expense:', error);
-      toast.error('Error al guardar');
-    },
+    onError: () => toast.error('Error al guardar'),
   });
 
-  // Update price mutation
   const updatePriceMutation = useMutation({
     mutationFn: async () => {
       if (!selectedExpenseForUpdate) return;
-      
-      const newEntry: PriceHistoryEntry = {
-        amount: parseFloat(priceUpdateData.amount),
-        effective_date: priceUpdateData.effective_date,
-        notes: priceUpdateData.notes || undefined,
-      };
-
+      const newEntry: PriceHistoryEntry = { amount: parseFloat(priceUpdateData.amount), effective_date: priceUpdateData.effective_date, notes: priceUpdateData.notes || undefined };
       const updatedHistory = [...(selectedExpenseForUpdate.price_history || []), newEntry];
-
-      const { error } = await supabase
-        .from('recurring_expenses')
-        .update({
-          amount: parseFloat(priceUpdateData.amount),
-          price_history: updatedHistory as any,
-        })
-        .eq('id', selectedExpenseForUpdate.id);
-      
+      const { error } = await supabase.from('recurring_expenses').update({ amount: parseFloat(priceUpdateData.amount), price_history: updatedHistory as any }).eq('id', selectedExpenseForUpdate.id);
       if (error) throw error;
-
-      // Also update future pending transactions if any
-      const effectiveDate = priceUpdateData.effective_date;
-      const { error: txError } = await supabase
-        .from('transactions')
-        .update({ amount: parseFloat(priceUpdateData.amount) })
-        .eq('recurring_expense_id', selectedExpenseForUpdate.id)
-        .gte('transaction_date', effectiveDate);
-      
-      if (txError) console.error('Error updating future transactions:', txError);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recurring-expenses'] });
-      queryClient.invalidateQueries({ queryKey: ['transactions'] });
       setIsPriceUpdateOpen(false);
       setSelectedExpenseForUpdate(null);
       setPriceUpdateData({ amount: '', effective_date: format(new Date(), 'yyyy-MM-dd'), notes: '' });
-      toast.success('Precio actualizado correctamente');
+      toast.success('Precio actualizado');
     },
-    onError: () => {
-      toast.error('Error al actualizar precio');
-    },
+    onError: () => toast.error('Error al actualizar precio'),
   });
 
-  // Toggle active mutation
   const toggleActiveMutation = useMutation({
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
-      const { error } = await supabase
-        .from('recurring_expenses')
-        .update({ is_active, end_date: is_active ? null : format(new Date(), 'yyyy-MM-dd') })
-        .eq('id', id);
-      
+      const { error } = await supabase.from('recurring_expenses').update({ is_active, end_date: is_active ? null : format(new Date(), 'yyyy-MM-dd') }).eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -268,70 +208,35 @@ export default function RecurringExpenses() {
     },
   });
 
-  // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('recurring_expenses')
-        .delete()
-        .eq('id', id);
-      
+      const { error } = await supabase.from('recurring_expenses').delete().eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recurring-expenses'] });
-      queryClient.invalidateQueries({ queryKey: ['transactions'] });
       toast.success('Gasto recurrente eliminado');
     },
   });
 
   const resetForm = () => {
-    setFormData({
-      name: '',
-      description: '',
-      amount: '',
-      currency: 'ARS',
-      category_id: '',
-      account_id: '',
-      frequency: 'monthly',
-      start_date: format(new Date(), 'yyyy-MM-dd'),
-      next_due_date: format(new Date(), 'yyyy-MM-dd'),
-      notes: '',
-    });
+    setFormData({ name: '', description: '', amount: '', currency: 'ARS', category_id: '', account_id: '', frequency: 'monthly', start_date: format(new Date(), 'yyyy-MM-dd'), next_due_date: format(new Date(), 'yyyy-MM-dd'), notes: '' });
   };
 
-  // Process recurring expenses manually
   const handleProcessRecurring = async () => {
     setIsProcessing(true);
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-recurring-expenses`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-          },
-        }
-      );
-      
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-recurring-expenses`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
+      });
       const result = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(result.error || 'Error processing');
-      }
-      
+      if (!response.ok) throw new Error(result.error || 'Error processing');
       queryClient.invalidateQueries({ queryKey: ['recurring-expenses'] });
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
-      queryClient.invalidateQueries({ queryKey: ['accounts'] });
-      
-      if (result.processed === 0) {
-        toast.info('No hay gastos vencidos para procesar');
-      } else {
-        toast.success(`Se procesaron ${result.processed} gastos recurrentes`);
-      }
+      if (result.processed === 0) toast.info('No hay gastos vencidos para procesar');
+      else toast.success(`Se procesaron ${result.processed} gastos recurrentes`);
     } catch (error) {
-      console.error('Error processing recurring expenses:', error);
       toast.error('Error al procesar gastos recurrentes');
     } finally {
       setIsProcessing(false);
@@ -340,58 +245,29 @@ export default function RecurringExpenses() {
 
   const openEdit = (expense: RecurringExpense) => {
     setEditingExpense(expense);
-    setFormData({
-      name: expense.name,
-      description: expense.description || '',
-      amount: String(expense.amount),
-      currency: expense.currency,
-      category_id: expense.category_id || '',
-      account_id: expense.account_id || '',
-      frequency: expense.frequency,
-      start_date: expense.start_date,
-      next_due_date: expense.next_due_date,
-      notes: expense.notes || '',
-    });
+    setFormData({ name: expense.name, description: expense.description || '', amount: String(expense.amount), currency: expense.currency, category_id: expense.category_id || '', account_id: expense.account_id || '', frequency: expense.frequency, start_date: expense.start_date, next_due_date: expense.next_due_date, notes: expense.notes || '' });
     setIsDialogOpen(true);
   };
 
   const openPriceUpdate = (expense: RecurringExpense) => {
     setSelectedExpenseForUpdate(expense);
-    setPriceUpdateData({
-      amount: String(expense.amount),
-      effective_date: format(new Date(), 'yyyy-MM-dd'),
-      notes: '',
-    });
+    setPriceUpdateData({ amount: String(expense.amount), effective_date: format(new Date(), 'yyyy-MM-dd'), notes: '' });
     setIsPriceUpdateOpen(true);
   };
 
-  // Calculate projected monthly recurring expenses
-  const projectedRecurringTotal = recurringExpenses
-    ?.filter(e => e.is_active)
-    .reduce((sum, expense) => {
-      if (expense.currency === 'ARS') {
-        // Calculate how many times this expense occurs in a month
-        const multiplier = expense.frequency === 'weekly' ? 4 : 
-                          expense.frequency === 'biweekly' ? 2 : 
-                          expense.frequency === 'monthly' ? 1 :
-                          expense.frequency === 'quarterly' ? 0.33 :
-                          0.083; // yearly
-        return sum + (Number(expense.amount) * multiplier);
-      }
-      return sum;
-    }, 0) ?? 0;
+  // Calculations
+  const projectedRecurringTotal = recurringExpenses?.filter(e => e.is_active && e.currency === 'ARS').reduce((sum, expense) => {
+    const multiplier = expense.frequency === 'weekly' ? 4 : expense.frequency === 'biweekly' ? 2 : expense.frequency === 'monthly' ? 1 : expense.frequency === 'quarterly' ? 0.33 : 0.083;
+    return sum + (Number(expense.amount) * multiplier);
+  }, 0) ?? 0;
 
-  // Group expenses by category
+  const totalMonthlyExpenses = monthlyTransactions?.reduce((sum, tx) => sum + Number(tx.amount), 0) ?? 0;
   const expensesByCategory = monthlyTransactions?.reduce((acc, tx) => {
     const categoryName = tx.category?.name || 'Sin categoría';
-    if (!acc[categoryName]) {
-      acc[categoryName] = { total: 0, color: tx.category?.color || '#6b7280' };
-    }
+    if (!acc[categoryName]) acc[categoryName] = { total: 0, color: tx.category?.color || '#6b7280' };
     acc[categoryName].total += Number(tx.amount);
     return acc;
   }, {} as Record<string, { total: number; color: string }>) ?? {};
-
-  const totalMonthlyExpenses = monthlyTransactions?.reduce((sum, tx) => sum + Number(tx.amount), 0) ?? 0;
 
   if (isLoading) {
     return (
@@ -401,406 +277,313 @@ export default function RecurringExpenses() {
     );
   }
 
+  // Mobile Layout
+  if (isMobile) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="p-4">
+          <Tabs defaultValue="monthly" className="w-full">
+            <TabsList className="grid w-full grid-cols-2 mb-4">
+              <TabsTrigger value="monthly">Gastos del Mes</TabsTrigger>
+              <TabsTrigger value="recurring">Recurrentes</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="monthly" className="space-y-4">
+              <div className="flex gap-2">
+                <Button onClick={() => navigate('/transactions/new?type=expense')} className="flex-1">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Nuevo Gasto
+                </Button>
+                <Button variant="outline" onClick={handleProcessRecurring} disabled={isProcessing}>
+                  {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+                </Button>
+              </div>
+
+              <Card className="glass border-border/50">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground">{getMonthName(month)} {year}</p>
+                      <p className="text-2xl font-bold text-expense">
+                        <CurrencyDisplay amount={totalMonthlyExpenses} currency="ARS" size="xl" />
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-muted-foreground">Recurrentes proyectados</p>
+                      <p className="text-lg font-semibold text-muted-foreground">
+                        ~ <CurrencyDisplay amount={projectedRecurringTotal} currency="ARS" size="md" />
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="space-y-2">
+                {monthlyTransactions?.length === 0 ? (
+                  <EmptyState icon={TrendingDown} title="Sin gastos" description="No hay gastos registrados este mes" />
+                ) : (
+                  monthlyTransactions?.map((tx) => (
+                    <Card key={tx.id} className="glass border-border/50">
+                      <CardContent className="p-3 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-2 h-8 rounded-full" style={{ backgroundColor: tx.category?.color || '#6b7280' }} />
+                          <div>
+                            <p className="text-sm font-medium">{tx.description || 'Sin descripción'}</p>
+                            <p className="text-xs text-muted-foreground">{tx.category?.name}</p>
+                          </div>
+                        </div>
+                        <CurrencyDisplay amount={Number(tx.amount)} currency={tx.currency} size="sm" className="text-expense" />
+                      </CardContent>
+                    </Card>
+                  ))
+                )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="recurring" className="space-y-4">
+              <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) { setEditingExpense(null); resetForm(); } }}>
+                <DialogTrigger asChild>
+                  <Button className="w-full"><Plus className="h-4 w-4 mr-2" />Nuevo Recurrente</Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+                  <DialogHeader><DialogTitle>{editingExpense ? 'Editar' : 'Nuevo'} Gasto Recurrente</DialogTitle></DialogHeader>
+                  <form onSubmit={(e) => { e.preventDefault(); saveMutation.mutate(formData); }} className="space-y-4">
+                    <div><Label>Nombre</Label><Input value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required /></div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div><Label>Monto</Label><Input type="number" value={formData.amount} onChange={(e) => setFormData({ ...formData, amount: e.target.value })} required disabled={!!editingExpense} /></div>
+                      <div><Label>Moneda</Label><Select value={formData.currency} onValueChange={(v) => setFormData({ ...formData, currency: v as Currency })} disabled={!!editingExpense}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ARS">ARS</SelectItem><SelectItem value="USD">USD</SelectItem></SelectContent></Select></div>
+                    </div>
+                    <div><Label>Frecuencia</Label><Select value={formData.frequency} onValueChange={(v) => setFormData({ ...formData, frequency: v as RecurringFrequency })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(FREQUENCY_LABELS).map(([key, label]) => (<SelectItem key={key} value={key}>{label}</SelectItem>))}</SelectContent></Select></div>
+                    <div><Label>Categoría</Label><Select value={formData.category_id} onValueChange={(v) => setFormData({ ...formData, category_id: v })}><SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger><SelectContent>{categories?.map((cat) => (<SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>))}</SelectContent></Select></div>
+                    <div><Label>Cuenta</Label><Select value={formData.account_id} onValueChange={(v) => setFormData({ ...formData, account_id: v })}><SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger><SelectContent>{accounts?.map((acc) => (<SelectItem key={acc.id} value={acc.id}>{acc.name}</SelectItem>))}</SelectContent></Select></div>
+                    <div><Label>Próximo vencimiento</Label><Input type="date" value={formData.next_due_date} onChange={(e) => setFormData({ ...formData, next_due_date: e.target.value })} required /></div>
+                    <Button type="submit" className="w-full" disabled={saveMutation.isPending}>{saveMutation.isPending ? 'Guardando...' : 'Guardar'}</Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
+
+              {(!recurringExpenses || recurringExpenses.length === 0) ? (
+                <EmptyState icon={Repeat} title="Sin gastos recurrentes" description="Agrega tus gastos fijos" />
+              ) : (
+                <div className="space-y-3">
+                  {recurringExpenses.map((expense) => (
+                    <Card key={expense.id} className={`glass border-border/50 ${!expense.is_active ? 'opacity-50' : ''}`}>
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between mb-3">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <h3 className="font-medium">{expense.name}</h3>
+                              <Badge variant={expense.is_active ? 'default' : 'secondary'} className="text-xs">{expense.is_active ? FREQUENCY_LABELS[expense.frequency] : 'Inactivo'}</Badge>
+                            </div>
+                            <p className="text-sm text-muted-foreground">{expense.category?.name}</p>
+                          </div>
+                          <CurrencyDisplay amount={Number(expense.amount)} currency={expense.currency} size="lg" className="text-expense" />
+                        </div>
+                        <div className="flex items-center justify-between pt-3 border-t border-border/50">
+                          <Switch checked={expense.is_active} onCheckedChange={(checked) => toggleActiveMutation.mutate({ id: expense.id, is_active: checked })} />
+                          <div className="flex gap-1">
+                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openPriceUpdate(expense)}><DollarSign className="h-4 w-4" /></Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(expense)}><Edit className="h-4 w-4" /></Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => { if (confirm('¿Eliminar?')) deleteMutation.mutate(expense.id); }}><Trash2 className="h-4 w-4" /></Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
+        </div>
+
+        <Dialog open={isPriceUpdateOpen} onOpenChange={setIsPriceUpdateOpen}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader><DialogTitle>Actualizar Precio</DialogTitle></DialogHeader>
+            <div className="space-y-4">
+              <div><Label>Nuevo monto</Label><Input type="number" value={priceUpdateData.amount} onChange={(e) => setPriceUpdateData({ ...priceUpdateData, amount: e.target.value })} /></div>
+              <div><Label>Fecha efectiva</Label><Input type="date" value={priceUpdateData.effective_date} onChange={(e) => setPriceUpdateData({ ...priceUpdateData, effective_date: e.target.value })} /></div>
+              <Button onClick={() => updatePriceMutation.mutate()} className="w-full" disabled={updatePriceMutation.isPending}>Actualizar</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+    );
+  }
+
+  // Desktop Layout - Like HTML template (gastos.html)
   return (
     <div className="min-h-screen bg-background">
       <PageHeader 
-        title="Gastos" 
-        subtitle="Panel de egresos y recurrentes"
+        title="Gestión de Gastos" 
+        subtitle="Control y proyección de egresos"
         action={
-          <Dialog open={isDialogOpen} onOpenChange={(open) => {
-            setIsDialogOpen(open);
-            if (!open) {
-              setEditingExpense(null);
-              resetForm();
-            }
-          }}>
-            <DialogTrigger asChild>
-              <Button size="sm">
-                <Plus className="h-4 w-4 mr-2" />
-                Nuevo Recurrente
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>
-                  {editingExpense ? 'Editar Gasto Recurrente' : 'Nuevo Gasto Recurrente'}
-                </DialogTitle>
-              </DialogHeader>
-              <form onSubmit={(e) => { e.preventDefault(); saveMutation.mutate(formData); }} className="space-y-4">
-                <div>
-                  <Label htmlFor="name">Nombre</Label>
-                  <Input
-                    id="name"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="Ej: Netflix, Alquiler, Gym"
-                    required
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label htmlFor="amount">Monto</Label>
-                    <Input
-                      id="amount"
-                      type="number"
-                      step="0.01"
-                      value={formData.amount}
-                      onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                      required
-                      disabled={!!editingExpense}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="currency">Moneda</Label>
-                    <Select 
-                      value={formData.currency} 
-                      onValueChange={(v) => setFormData({ ...formData, currency: v as Currency })}
-                      disabled={!!editingExpense}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="ARS">ARS</SelectItem>
-                        <SelectItem value="USD">USD</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div>
-                  <Label htmlFor="frequency">Frecuencia</Label>
-                  <Select 
-                    value={formData.frequency} 
-                    onValueChange={(v) => setFormData({ ...formData, frequency: v as RecurringFrequency })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(FREQUENCY_LABELS).map(([key, label]) => (
-                        <SelectItem key={key} value={key}>{label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label htmlFor="category">Categoría</Label>
-                  <Select 
-                    value={formData.category_id} 
-                    onValueChange={(v) => setFormData({ ...formData, category_id: v })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar categoría" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories?.map((cat) => (
-                        <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label htmlFor="account">Cuenta de débito</Label>
-                  <Select 
-                    value={formData.account_id} 
-                    onValueChange={(v) => setFormData({ ...formData, account_id: v })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar cuenta" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {accounts?.map((acc) => (
-                        <SelectItem key={acc.id} value={acc.id}>
-                          {acc.name} ({acc.currency})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label htmlFor="next_due_date">Próximo vencimiento</Label>
-                  <Input
-                    id="next_due_date"
-                    type="date"
-                    value={formData.next_due_date}
-                    onChange={(e) => setFormData({ ...formData, next_due_date: e.target.value })}
-                    required
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="notes">Notas</Label>
-                  <Input
-                    id="notes"
-                    value={formData.notes}
-                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                    placeholder="Notas adicionales"
-                  />
-                </div>
-
-                <Button type="submit" className="w-full" disabled={saveMutation.isPending}>
-                  {saveMutation.isPending ? 'Guardando...' : (editingExpense ? 'Actualizar' : 'Crear')}
-                </Button>
-              </form>
-            </DialogContent>
-          </Dialog>
+          <div className="flex items-center gap-2 bg-card px-4 py-2 rounded-full border border-border cursor-pointer">
+            <Calendar className="h-4 w-4" />
+            <span>{getMonthName(month)} {year}</span>
+          </div>
         }
       />
 
-      <div className="p-4 max-w-4xl mx-auto">
-        <Tabs defaultValue="monthly" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-4">
-            <TabsTrigger value="monthly">Gastos del Mes</TabsTrigger>
-            <TabsTrigger value="recurring">Recurrentes</TabsTrigger>
-          </TabsList>
-
-          {/* Monthly Expenses Tab */}
-          <TabsContent value="monthly" className="space-y-4">
-            {/* Action buttons */}
-            <div className="flex gap-2">
-              <Button 
-                onClick={() => navigate('/transactions/new?type=expense')}
-                className="flex-1"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Nuevo Gasto
-              </Button>
-              <Button 
-                variant="outline"
-                onClick={handleProcessRecurring}
-                disabled={isProcessing}
-              >
-                {isProcessing ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Play className="h-4 w-4 mr-2" />
-                )}
-                Procesar Vencidos
-              </Button>
-            </div>
-
-            {/* Summary Card */}
+      <div className="p-6">
+        <div className="max-w-7xl mx-auto space-y-6">
+          {/* Metrics Grid - 4 columns like template */}
+          <div className="grid grid-cols-4 gap-4">
             <Card className="glass border-border/50">
               <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">{getMonthName(month)} {year}</p>
-                    <p className="text-2xl font-bold text-expense">
-                      {CURRENCY_SYMBOLS.ARS} {totalMonthlyExpenses.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs text-muted-foreground">Recurrentes proyectados</p>
-                    <p className="text-lg font-semibold text-muted-foreground">
-                      ~ {CURRENCY_SYMBOLS.ARS} {projectedRecurringTotal.toLocaleString('es-AR', { minimumFractionDigits: 0 })}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Category breakdown */}
-                <div className="space-y-2">
-                  <p className="text-xs font-medium text-muted-foreground">Por categoría</p>
-                  {Object.entries(expensesByCategory)
-                    .sort(([, a], [, b]) => b.total - a.total)
-                    .map(([category, data]) => (
-                      <div key={category} className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div 
-                            className="w-3 h-3 rounded-full" 
-                            style={{ backgroundColor: data.color }}
-                          />
-                          <span className="text-sm">{category}</span>
-                        </div>
-                        <span className="text-sm font-medium">
-                          {CURRENCY_SYMBOLS.ARS} {data.total.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                        </span>
-                      </div>
-                    ))}
-                </div>
+                <p className="text-xs text-muted-foreground uppercase mb-1">Gastos Ejecutados</p>
+                <h3 className="text-xl font-extrabold text-expense">
+                  <CurrencyDisplay amount={totalMonthlyExpenses} currency="ARS" size="xl" className="text-expense" />
+                </h3>
               </CardContent>
             </Card>
+            <Card className="glass border-border/50">
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground uppercase mb-1">Proyección Recurrente</p>
+                <h3 className="text-xl font-extrabold text-warning">
+                  <CurrencyDisplay amount={projectedRecurringTotal} currency="ARS" size="xl" className="text-warning" />
+                </h3>
+              </CardContent>
+            </Card>
+            <Card className="glass border-border/50">
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground uppercase mb-1">Cuotas Tarjetas</p>
+                <h3 className="text-xl font-extrabold text-warning">$ 56.999,94</h3>
+              </CardContent>
+            </Card>
+            <Card className="glass border-border/50 bg-gradient-to-br from-card to-primary/10">
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground uppercase mb-1">Total Comprometido</p>
+                <h3 className="text-xl font-extrabold">
+                  <CurrencyDisplay amount={totalMonthlyExpenses + projectedRecurringTotal} currency="ARS" size="xl" />
+                </h3>
+              </CardContent>
+            </Card>
+          </div>
 
-            {/* Recent expenses list */}
-            <div className="space-y-2">
-              <h3 className="text-sm font-medium text-muted-foreground">Últimos gastos</h3>
-              {monthlyTransactions?.length === 0 ? (
-                <EmptyState
-                  icon={TrendingDown}
-                  title="Sin gastos"
-                  description="No hay gastos registrados este mes"
-                />
-              ) : (
-                monthlyTransactions?.map((tx) => (
+          {/* Tabs */}
+          <Tabs defaultValue="recurring" className="w-full">
+            <TabsList className="border-b border-border bg-transparent mb-6">
+              <TabsTrigger value="history" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none">Historial del Mes</TabsTrigger>
+              <TabsTrigger value="recurring" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none">Gastos Recurrentes</TabsTrigger>
+              <TabsTrigger value="cards" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none">Tarjetas / Cuotas</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="history" className="space-y-4">
+              <div className="flex gap-2 mb-4">
+                <Button onClick={() => navigate('/transactions/new?type=expense')}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Nuevo Gasto
+                </Button>
+              </div>
+              
+              <div className="space-y-2">
+                {monthlyTransactions?.map((tx) => (
                   <Card key={tx.id} className="glass border-border/50">
-                    <CardContent className="p-3 flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div 
-                          className="w-2 h-8 rounded-full" 
-                          style={{ backgroundColor: tx.category?.color || '#6b7280' }}
-                        />
-                        <div>
-                          <p className="text-sm font-medium">{tx.description || 'Sin descripción'}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {tx.category?.name} • {format(new Date(tx.transaction_date), 'd MMM', { locale: es })}
-                          </p>
-                        </div>
-                      </div>
-                      <CurrencyDisplay 
-                        amount={Number(tx.amount)} 
-                        currency={tx.currency}
-                        size="sm"
-                        className="text-expense"
-                      />
-                    </CardContent>
-                  </Card>
-                ))
-              )}
-            </div>
-          </TabsContent>
-
-          {/* Recurring Expenses Tab */}
-          <TabsContent value="recurring" className="space-y-4">
-            {/* Summary */}
-            <Card className="glass border-border/50">
-              <CardContent className="p-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-xs text-muted-foreground">Activos</p>
-                    <p className="text-2xl font-bold">
-                      {recurringExpenses?.filter(e => e.is_active).length || 0}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Proyección mensual</p>
-                    <p className="text-xl font-semibold text-expense">
-                      ~ {CURRENCY_SYMBOLS.ARS} {projectedRecurringTotal.toLocaleString('es-AR', { minimumFractionDigits: 0 })}
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Recurring expenses list */}
-            {(!recurringExpenses || recurringExpenses.length === 0) ? (
-              <EmptyState
-                icon={Repeat}
-                title="Sin gastos recurrentes"
-                description="Agrega tus gastos fijos como servicios, suscripciones, alquiler, etc."
-              />
-            ) : (
-              <div className="space-y-3">
-                {recurringExpenses.map((expense) => (
-                  <Card 
-                    key={expense.id} 
-                    className={`glass border-border/50 ${!expense.is_active ? 'opacity-50' : ''}`}
-                  >
                     <CardContent className="p-4">
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <h3 className="font-medium">{expense.name}</h3>
-                            <Badge variant={expense.is_active ? 'default' : 'secondary'} className="text-xs">
-                              {expense.is_active ? FREQUENCY_LABELS[expense.frequency] : 'Inactivo'}
-                            </Badge>
-                          </div>
-                          <p className="text-sm text-muted-foreground">
-                            {expense.category?.name || 'Sin categoría'}
-                            {expense.account && ` • ${expense.account.name}`}
-                          </p>
+                      <div className="grid grid-cols-[45px_2fr_1fr_1fr_150px] items-center gap-4">
+                        <div className="w-9 h-9 rounded-xl bg-expense/10 flex items-center justify-center">
+                          <TrendingDown className="h-4 w-4 text-expense" />
                         </div>
-                        <CurrencyDisplay 
-                          amount={Number(expense.amount)} 
-                          currency={expense.currency}
-                          size="lg"
-                          className="text-expense"
-                        />
-                      </div>
-
-                      <div className="flex items-center justify-between text-xs text-muted-foreground mb-3">
-                        <div className="flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          <span>Próximo: {format(new Date(expense.next_due_date), 'd MMM yyyy', { locale: es })}</span>
+                        <div>
+                          <h4 className="font-medium">{tx.description || 'Sin descripción'}</h4>
+                          <p className="text-sm text-muted-foreground">{tx.notes || ''}</p>
                         </div>
-                        {expense.price_history && expense.price_history.length > 1 && (
-                          <div className="flex items-center gap-1">
-                            <History className="h-3 w-3" />
-                            <span>{expense.price_history.length} cambios de precio</span>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex items-center justify-between pt-3 border-t border-border/50">
-                        <div className="flex items-center gap-2">
-                          <Switch
-                            checked={expense.is_active}
-                            onCheckedChange={(checked) => 
-                              toggleActiveMutation.mutate({ id: expense.id, is_active: checked })
-                            }
-                          />
-                          <span className="text-xs text-muted-foreground">
-                            {expense.is_active ? 'Activo' : 'Inactivo'}
-                          </span>
+                        <Badge variant="secondary" className="w-fit">{tx.category?.name || 'Sin categoría'}</Badge>
+                        <div className="text-right font-bold">
+                          <CurrencyDisplay amount={Number(tx.amount)} currency={tx.currency} size="md" className="text-expense" />
                         </div>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => openPriceUpdate(expense)}
-                          >
-                            <DollarSign className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => openEdit(expense)}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-destructive"
-                            onClick={() => {
-                              if (confirm('¿Eliminar este gasto recurrente?')) {
-                                deleteMutation.mutate(expense.id);
-                              }
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                        <div className="flex items-center justify-end gap-2">
+                          <Button variant="ghost" size="icon" className="h-8 w-8"><Edit className="h-4 w-4" /></Button>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive"><Trash2 className="h-4 w-4" /></Button>
                         </div>
                       </div>
                     </CardContent>
                   </Card>
                 ))}
               </div>
-            )}
-          </TabsContent>
-        </Tabs>
+            </TabsContent>
+
+            <TabsContent value="recurring" className="space-y-4">
+              <div className="flex gap-2 mb-4">
+                <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) { setEditingExpense(null); resetForm(); } }}>
+                  <DialogTrigger asChild>
+                    <Button><Plus className="h-4 w-4 mr-2" />Nuevo Gasto / Recurrente</Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader><DialogTitle>{editingExpense ? 'Editar' : 'Nuevo'} Gasto Recurrente</DialogTitle></DialogHeader>
+                    <form onSubmit={(e) => { e.preventDefault(); saveMutation.mutate(formData); }} className="space-y-4">
+                      <div><Label>Nombre</Label><Input value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="Ej: Netflix, Alquiler" required /></div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div><Label>Monto</Label><Input type="number" value={formData.amount} onChange={(e) => setFormData({ ...formData, amount: e.target.value })} required disabled={!!editingExpense} /></div>
+                        <div><Label>Moneda</Label><Select value={formData.currency} onValueChange={(v) => setFormData({ ...formData, currency: v as Currency })} disabled={!!editingExpense}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="ARS">ARS</SelectItem><SelectItem value="USD">USD</SelectItem></SelectContent></Select></div>
+                      </div>
+                      <div><Label>Frecuencia</Label><Select value={formData.frequency} onValueChange={(v) => setFormData({ ...formData, frequency: v as RecurringFrequency })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(FREQUENCY_LABELS).map(([key, label]) => (<SelectItem key={key} value={key}>{label}</SelectItem>))}</SelectContent></Select></div>
+                      <div><Label>Categoría</Label><Select value={formData.category_id} onValueChange={(v) => setFormData({ ...formData, category_id: v })}><SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger><SelectContent>{categories?.map((cat) => (<SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>))}</SelectContent></Select></div>
+                      <div><Label>Cuenta de débito</Label><Select value={formData.account_id} onValueChange={(v) => setFormData({ ...formData, account_id: v })}><SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger><SelectContent>{accounts?.map((acc) => (<SelectItem key={acc.id} value={acc.id}>{acc.name} ({acc.currency})</SelectItem>))}</SelectContent></Select></div>
+                      <div><Label>Próximo vencimiento</Label><Input type="date" value={formData.next_due_date} onChange={(e) => setFormData({ ...formData, next_due_date: e.target.value })} required /></div>
+                      <Button type="submit" className="w-full" disabled={saveMutation.isPending}>{saveMutation.isPending ? 'Guardando...' : 'Guardar'}</Button>
+                    </form>
+                  </DialogContent>
+                </Dialog>
+                <Button variant="outline" onClick={handleProcessRecurring} disabled={isProcessing}>
+                  {isProcessing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
+                  Procesar Vencidos
+                </Button>
+              </div>
+
+              <div className="space-y-2">
+                {(!recurringExpenses || recurringExpenses.length === 0) ? (
+                  <EmptyState icon={Repeat} title="Sin gastos recurrentes" description="Agrega tus gastos fijos" />
+                ) : (
+                  recurringExpenses.map((expense) => (
+                    <Card key={expense.id} className={`glass border-border/50 ${!expense.is_active ? 'opacity-50' : ''} ${!expense.is_active ? 'border-dashed' : ''}`}>
+                      <CardContent className="p-4">
+                        <div className="grid grid-cols-[45px_2fr_1fr_1fr_150px] items-center gap-4">
+                          <div className="w-9 h-9 rounded-xl bg-secondary/50 flex items-center justify-center">
+                            <Repeat className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <h4 className="font-medium">{expense.name}</h4>
+                            <p className="text-sm text-muted-foreground">
+                              Vence el {format(new Date(expense.next_due_date), 'd', { locale: es })} • {expense.account?.name || 'Sin cuenta'}
+                            </p>
+                          </div>
+                          <Badge variant={expense.is_active ? 'default' : 'secondary'} className={expense.is_active ? 'bg-income/10 text-income' : ''}>
+                            {expense.is_active ? 'Activo' : 'Pausado'}
+                          </Badge>
+                          <div className="text-right font-bold">
+                            <CurrencyDisplay amount={Number(expense.amount)} currency={expense.currency} size="md" />
+                          </div>
+                          <div className="flex items-center justify-end gap-2">
+                            <Switch checked={expense.is_active} onCheckedChange={(checked) => toggleActiveMutation.mutate({ id: expense.id, is_active: checked })} />
+                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openPriceUpdate(expense)}><DollarSign className="h-4 w-4" /></Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(expense)}><Edit className="h-4 w-4" /></Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => { if (confirm('¿Eliminar?')) deleteMutation.mutate(expense.id); }}><Trash2 className="h-4 w-4" /></Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))
+                )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="cards" className="space-y-4">
+              <EmptyState icon={CreditCard} title="Sin cuotas pendientes" description="Las cuotas de tarjetas se mostrarán aquí" />
+            </TabsContent>
+          </Tabs>
+        </div>
       </div>
 
       {/* Price Update Dialog */}
       <Dialog open={isPriceUpdateOpen} onOpenChange={setIsPriceUpdateOpen}>
         <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Actualizar Precio</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>Actualizar Precio</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Actualiza el precio de <strong>{selectedExpenseForUpdate?.name}</strong>. 
-              Este cambio se aplicará desde la fecha indicada.
-            </p>
-            
+            <p className="text-sm text-muted-foreground">Actualiza el precio de <strong>{selectedExpenseForUpdate?.name}</strong>.</p>
             {selectedExpenseForUpdate?.price_history && selectedExpenseForUpdate.price_history.length > 0 && (
               <div className="p-3 rounded-lg bg-muted/50">
-                <p className="text-xs font-medium mb-2">Historial de precios</p>
+                <p className="text-xs font-medium mb-2">Historial</p>
                 {selectedExpenseForUpdate.price_history.slice(-3).map((entry, idx) => (
                   <div key={idx} className="flex justify-between text-xs">
                     <span>{format(new Date(entry.effective_date), 'd MMM yyyy', { locale: es })}</span>
@@ -809,45 +592,10 @@ export default function RecurringExpenses() {
                 ))}
               </div>
             )}
-
-            <div>
-              <Label htmlFor="new_amount">Nuevo monto</Label>
-              <Input
-                id="new_amount"
-                type="number"
-                step="0.01"
-                value={priceUpdateData.amount}
-                onChange={(e) => setPriceUpdateData({ ...priceUpdateData, amount: e.target.value })}
-                required
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="effective_date">Fecha efectiva</Label>
-              <Input
-                id="effective_date"
-                type="date"
-                value={priceUpdateData.effective_date}
-                onChange={(e) => setPriceUpdateData({ ...priceUpdateData, effective_date: e.target.value })}
-                required
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="price_notes">Notas (opcional)</Label>
-              <Input
-                id="price_notes"
-                value={priceUpdateData.notes}
-                onChange={(e) => setPriceUpdateData({ ...priceUpdateData, notes: e.target.value })}
-                placeholder="Ej: Aumento por inflación"
-              />
-            </div>
-
-            <Button 
-              onClick={() => updatePriceMutation.mutate()} 
-              className="w-full"
-              disabled={updatePriceMutation.isPending || !priceUpdateData.amount}
-            >
+            <div><Label>Nuevo monto</Label><Input type="number" value={priceUpdateData.amount} onChange={(e) => setPriceUpdateData({ ...priceUpdateData, amount: e.target.value })} /></div>
+            <div><Label>Fecha efectiva</Label><Input type="date" value={priceUpdateData.effective_date} onChange={(e) => setPriceUpdateData({ ...priceUpdateData, effective_date: e.target.value })} /></div>
+            <div><Label>Notas</Label><Input value={priceUpdateData.notes} onChange={(e) => setPriceUpdateData({ ...priceUpdateData, notes: e.target.value })} placeholder="Ej: Aumento por inflación" /></div>
+            <Button onClick={() => updatePriceMutation.mutate()} className="w-full" disabled={updatePriceMutation.isPending || !priceUpdateData.amount}>
               {updatePriceMutation.isPending ? 'Actualizando...' : 'Actualizar Precio'}
             </Button>
           </div>
