@@ -1,21 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
 import { useToast } from '@/hooks/use-toast';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { 
   Mic, 
-  MicOff, 
   Send, 
   Sparkles, 
   AlertCircle,
@@ -24,6 +23,14 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Account, Category, TransactionType, Currency } from '@/types/finance';
+
+// Type declarations for Web Speech API
+declare global {
+  interface Window {
+    SpeechRecognition: any;
+    webkitSpeechRecognition: any;
+  }
+}
 
 interface AiAssistantModalProps {
   open: boolean;
@@ -59,16 +66,59 @@ export function AiAssistantModal({
   const [state, setState] = useState<AssistantState>('idle');
   const [errorMessage, setErrorMessage] = useState('');
   const [parsedResult, setParsedResult] = useState<ParsedTransaction | null>(null);
+  const [isListening, setIsListening] = useState(false);
+  
+  const recognitionRef = useRef<any>(null);
 
-  const {
-    transcript,
-    isListening,
-    isSupported: isSpeechSupported,
-    error: speechError,
-    startListening,
-    stopListening,
-    resetTranscript,
-  } = useSpeechRecognition({ language: 'es-AR' });
+  // Check browser support for speech
+  const isSpeechSupported = typeof window !== 'undefined' && 
+    ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
+
+  // Initialize speech recognition (following the working example pattern)
+  useEffect(() => {
+    if (!isSpeechSupported) return;
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    
+    recognition.continuous = false;
+    recognition.lang = 'es-AR';
+    recognition.interimResults = false;
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setTextInput(transcript);
+      setIsListening(false);
+      setState('idle');
+    };
+
+    recognition.onerror = (event: any) => {
+      console.error('Speech recognition error:', event.error);
+      setIsListening(false);
+      setState('idle');
+      
+      if (event.error !== 'aborted' && event.error !== 'no-speech') {
+        setErrorMessage(`Error de micrófono: ${event.error}`);
+        setState('error');
+      }
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+
+    recognitionRef.current = recognition;
+
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch (e) {
+          // Ignore
+        }
+      }
+    };
+  }, [isSpeechSupported]);
 
   // Fetch user accounts
   const { data: accounts } = useQuery({
@@ -97,23 +147,6 @@ export function AiAssistantModal({
     enabled: open && !!user,
   });
 
-  // Update text input from voice transcript
-  useEffect(() => {
-    if (transcript) {
-      // Clean interim markers
-      const cleanTranscript = transcript.replace(/\s*\[.*\]$/, '');
-      setTextInput(cleanTranscript);
-    }
-  }, [transcript]);
-
-  // Handle speech errors
-  useEffect(() => {
-    if (speechError) {
-      setErrorMessage(speechError);
-      setState('error');
-    }
-  }, [speechError]);
-
   // Reset state when modal opens
   useEffect(() => {
     if (open) {
@@ -121,19 +154,30 @@ export function AiAssistantModal({
       setTextInput('');
       setErrorMessage('');
       setParsedResult(null);
-      resetTranscript();
+      setIsListening(false);
     }
-  }, [open, resetTranscript]);
+  }, [open]);
 
-  const handleVoiceToggle = () => {
-    if (isListening) {
-      stopListening();
-      setState('idle');
+  const handleListen = () => {
+    if (!recognitionRef.current) return;
+
+    if (!isListening) {
+      try {
+        recognitionRef.current.start();
+        setIsListening(true);
+        setState('listening');
+        setErrorMessage('');
+      } catch (err) {
+        console.error('Failed to start recognition:', err);
+      }
     } else {
-      resetTranscript();
-      setTextInput('');
-      startListening();
-      setState('listening');
+      try {
+        recognitionRef.current.stop();
+        setIsListening(false);
+        setState('idle');
+      } catch (err) {
+        console.error('Failed to stop recognition:', err);
+      }
     }
   };
 
@@ -155,6 +199,14 @@ export function AiAssistantModal({
         variant: 'destructive',
       });
       return;
+    }
+
+    // Stop listening if active
+    if (isListening && recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {}
+      setIsListening(false);
     }
 
     setState('processing');
@@ -207,51 +259,52 @@ export function AiAssistantModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md" aria-describedby="ai-assistant-description">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
             Asistente IA
           </DialogTitle>
+          <DialogDescription id="ai-assistant-description">
+            Describí tu movimiento con lenguaje natural para registrarlo rápidamente.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Instructions */}
+          {/* Example hint */}
           <p className="text-sm text-muted-foreground">
-            Describí tu movimiento con lenguaje natural. Por ejemplo:
+            Por ejemplo:
             <span className="block mt-1 italic text-foreground/80">
               "Pagué 15 mil de súper con Mercado Pago"
             </span>
           </p>
 
-          {/* Input area */}
+          {/* Input area - using simple input like the working example */}
           <div className="relative">
-            <Textarea
+            <Input
+              type="text"
               value={textInput}
               onChange={(e) => setTextInput(e.target.value)}
-              placeholder="Escribí o dictá tu movimiento..."
-              className="min-h-[100px] pr-12 resize-none"
+              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSubmit()}
+              placeholder="Cargá tu movimiento aquí..."
+              className="pr-12"
               disabled={state === 'processing' || state === 'success'}
             />
             
-            {/* Voice button */}
+            {/* Voice button - positioned inside input like the working example */}
             {isSpeechSupported && state !== 'processing' && state !== 'success' && (
-              <Button
+              <button
                 type="button"
-                size="icon"
-                variant={isListening ? 'default' : 'ghost'}
+                onClick={handleListen}
                 className={cn(
-                  "absolute bottom-2 right-2 h-8 w-8",
-                  isListening && "animate-pulse bg-destructive hover:bg-destructive/90"
+                  "absolute right-3 top-1/2 -translate-y-1/2 text-xl transition-colors",
+                  isListening 
+                    ? "text-destructive animate-pulse" 
+                    : "text-muted-foreground hover:text-foreground"
                 )}
-                onClick={handleVoiceToggle}
               >
-                {isListening ? (
-                  <MicOff className="h-4 w-4" />
-                ) : (
-                  <Mic className="h-4 w-4" />
-                )}
-              </Button>
+                <Mic className="h-5 w-5" />
+              </button>
             )}
           </div>
 
