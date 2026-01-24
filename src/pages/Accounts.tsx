@@ -19,7 +19,8 @@ import {
   Bitcoin,
   MoreVertical,
   Pencil,
-  Trash2
+  Trash2,
+  RefreshCw
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { Account, AccountType } from '@/types/finance';
@@ -50,8 +51,8 @@ const accountTypeIcons: Record<AccountType, typeof Wallet> = {
 };
 
 const accountTypeLabels: Record<AccountType, string> = {
-  bank: 'Cuenta bancaria',
-  wallet: 'Billetera virtual',
+  bank: 'Bancos',
+  wallet: 'Billeteras Virtuales',
   cash: 'Efectivo',
   investment: 'Inversiones',
   crypto: 'Crypto',
@@ -128,55 +129,6 @@ export default function Accounts() {
     );
   }
 
-  const AccountCard = ({ account }: { account: Account }) => (
-    <Card 
-      className="glass border-border/50"
-      style={{ borderLeftColor: account.color, borderLeftWidth: '3px' }}
-    >
-      <CardContent className="p-4 flex items-center justify-between">
-        <Link to={`/accounts/${account.id}`} className="flex-1">
-          <div>
-            <p className="font-medium text-foreground">{account.name}</p>
-            {account.alias && (
-              <p className="text-xs text-muted-foreground">{account.alias}</p>
-            )}
-          </div>
-        </Link>
-        
-        <div className="flex items-center gap-2">
-          <CurrencyDisplay 
-            amount={Number(account.current_balance)} 
-            currency={account.currency}
-            size="md"
-          />
-          
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon">
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem asChild>
-                <Link to={`/accounts/${account.id}/edit`}>
-                  <Pencil className="h-4 w-4 mr-2" />
-                  Editar
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem 
-                className="text-destructive"
-                onClick={() => setDeleteId(account.id)}
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Eliminar
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </CardContent>
-    </Card>
-  );
-
   // Mobile Layout
   if (isMobile) {
     return (
@@ -187,13 +139,14 @@ export default function Accounts() {
             <CardContent className="p-4">
               <p className="text-sm text-muted-foreground mb-2">Total disponible</p>
               <div className="space-y-1">
-                <CurrencyDisplay amount={totalARS} currency="ARS" size="xl" />
+                <CurrencyDisplay amount={totalARS} currency="ARS" size="xl" enablePrivacy />
                 {totalUSD > 0 && (
                   <CurrencyDisplay 
                     amount={totalUSD} 
                     currency="USD" 
                     size="lg" 
                     className="block text-muted-foreground" 
+                    enablePrivacy
                   />
                 )}
               </div>
@@ -225,12 +178,59 @@ export default function Accounts() {
                   <div key={type}>
                     <div className="flex items-center gap-2 mb-3">
                       <Icon className="h-4 w-4 text-muted-foreground" />
-                      <h3 className="text-sm font-medium text-muted-foreground">{label}</h3>
+                      <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{label}</h3>
                     </div>
                     
                     <div className="space-y-2">
                       {typeAccounts.map((account) => (
-                        <AccountCard key={account.id} account={account} />
+                        <Card 
+                          key={account.id}
+                          className="glass border-border/50"
+                          style={{ borderLeftColor: account.color || '#6366f1', borderLeftWidth: '3px' }}
+                        >
+                          <CardContent className="p-4 flex items-center justify-between">
+                            <Link to={`/accounts/${account.id}`} className="flex-1">
+                              <div>
+                                <p className="font-medium text-foreground">{account.name}</p>
+                                {account.alias && (
+                                  <p className="text-xs text-muted-foreground font-mono">{account.alias}</p>
+                                )}
+                              </div>
+                            </Link>
+                            
+                            <div className="flex items-center gap-2">
+                              <CurrencyDisplay 
+                                amount={Number(account.current_balance)} 
+                                currency={account.currency}
+                                size="md"
+                                enablePrivacy
+                              />
+                              
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon">
+                                    <MoreVertical className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem asChild>
+                                    <Link to={`/accounts/${account.id}/edit`}>
+                                      <Pencil className="h-4 w-4 mr-2" />
+                                      Editar
+                                    </Link>
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem 
+                                    className="text-destructive"
+                                    onClick={() => setDeleteId(account.id)}
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Eliminar
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          </CardContent>
+                        </Card>
                       ))}
                     </div>
                   </div>
@@ -266,94 +266,150 @@ export default function Accounts() {
     );
   }
 
-  // Desktop Layout - side by side with summary
+  // Desktop Layout - Like HTML template
   return (
     <div className="min-h-screen bg-background">
       <PageHeader 
-        title="Cuentas" 
-        subtitle="Gestiona tus disponibilidades"
+        title="Mis Cuentas" 
+        subtitle="Gestiona tus disponibilidades y saldos iniciales"
         action={
           <Link to="/accounts/new">
-            <Button size="icon" className="rounded-full">
-              <Plus className="h-5 w-5" />
+            <Button className="rounded-full">
+              <Plus className="h-4 w-4 mr-2" />
+              Nueva Cuenta
             </Button>
           </Link>
         }
       />
 
       <div className="p-6">
-        <div className="max-w-6xl mx-auto">
-          <div className="grid grid-cols-12 gap-6">
-            {/* Totales - Left column */}
-            <div className="col-span-4">
-              <Card className="glass border-border/50 sticky top-6">
-                <CardContent className="p-6">
-                  <p className="text-sm text-muted-foreground mb-3">Total disponible</p>
-                  <div className="space-y-2">
-                    <CurrencyDisplay amount={totalARS} currency="ARS" size="xl" />
-                    {totalUSD > 0 && (
-                      <CurrencyDisplay 
-                        amount={totalUSD} 
-                        currency="USD" 
-                        size="lg" 
-                        className="block text-muted-foreground" 
-                      />
-                    )}
-                  </div>
-
-                  <div className="mt-6 pt-6 border-t border-border/50">
-                    <Link to="/accounts/new">
-                      <Button className="w-full">
-                        <Plus className="h-4 w-4 mr-2" />
-                        Nueva cuenta
-                      </Button>
-                    </Link>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Lista de cuentas - Right column */}
-            <div className="col-span-8">
-              {(!accounts || accounts.length === 0) ? (
-                <EmptyState
-                  icon={Wallet}
-                  title="Sin cuentas"
-                  description="Agrega tus cuentas bancarias, billeteras virtuales o efectivo"
-                  action={
-                    <Link to="/accounts/new">
-                      <Button>
-                        <Plus className="h-4 w-4 mr-2" />
-                        Agregar cuenta
-                      </Button>
-                    </Link>
-                  }
-                />
-              ) : (
-                <div className="grid grid-cols-2 gap-6">
-                  {Object.entries(groupedAccounts || {}).map(([type, typeAccounts]) => {
-                    const Icon = accountTypeIcons[type as AccountType];
-                    const label = accountTypeLabels[type as AccountType];
-                    
-                    return (
-                      <div key={type} className="col-span-2">
-                        <div className="flex items-center gap-2 mb-3">
-                          <Icon className="h-4 w-4 text-muted-foreground" />
-                          <h3 className="text-sm font-medium text-muted-foreground">{label}</h3>
-                        </div>
-                        
-                        <div className="grid grid-cols-2 gap-3">
-                          {typeAccounts.map((account) => (
-                            <AccountCard key={account.id} account={account} />
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+        <div className="max-w-6xl mx-auto space-y-8">
+          {/* Summary Cards - grid like template */}
+          <div className="grid grid-cols-2 gap-6">
+            <Card className="glass border-border/50 bg-gradient-to-br from-card to-primary/5">
+              <CardContent className="p-6">
+                <p className="text-sm text-muted-foreground mb-2">Patrimonio Neto (ARS)</p>
+                <CurrencyDisplay amount={totalARS} currency="ARS" size="xl" className="font-extrabold" enablePrivacy />
+              </CardContent>
+            </Card>
+            <Card className="glass border-border/50 border-l-4 border-l-income">
+              <CardContent className="p-6">
+                <p className="text-sm text-muted-foreground mb-2">Patrimonio Neto (USD MEP)</p>
+                <CurrencyDisplay amount={totalUSD} currency="USD" size="xl" className="font-extrabold" enablePrivacy />
+              </CardContent>
+            </Card>
           </div>
+
+          {/* Accounts List by Group */}
+          {(!accounts || accounts.length === 0) ? (
+            <EmptyState
+              icon={Wallet}
+              title="Sin cuentas"
+              description="Agrega tus cuentas bancarias, billeteras virtuales o efectivo"
+              action={
+                <Link to="/accounts/new">
+                  <Button>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Agregar cuenta
+                  </Button>
+                </Link>
+              }
+            />
+          ) : (
+            <div className="space-y-8">
+              {Object.entries(groupedAccounts || {}).map(([type, typeAccounts]) => {
+                const Icon = accountTypeIcons[type as AccountType];
+                const label = accountTypeLabels[type as AccountType];
+                
+                return (
+                  <div key={type}>
+                    <div className="flex items-center gap-2 mb-4">
+                      <Icon className="h-4 w-4 text-muted-foreground" />
+                      <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{label}</h3>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      {typeAccounts.map((account) => {
+                        const isUSD = account.currency === 'USD';
+                        return (
+                          <Card 
+                            key={account.id}
+                            className={`glass border-border/50 hover:border-primary/50 transition-all hover:scale-[1.01] ${
+                              isUSD ? 'border-l-4 border-l-income' : ''
+                            }`}
+                          >
+                            <CardContent className="p-4">
+                              <div className="grid grid-cols-[50px_2fr_1fr_1fr_150px] items-center gap-4">
+                                {/* Icon */}
+                                <div className="w-10 h-10 rounded-xl bg-secondary/50 flex items-center justify-center">
+                                  <Icon className="h-5 w-5 text-primary" />
+                                </div>
+                                
+                                {/* Info */}
+                                <Link to={`/accounts/${account.id}`} className="flex-1">
+                                  <h4 className="font-medium">{account.name}</h4>
+                                  <p className="text-sm text-muted-foreground font-mono">
+                                    {account.cbu_cvu ? `CBU: ${account.cbu_cvu.slice(0, 10)}...` : account.alias || 'Sin alias'}
+                                  </p>
+                                </Link>
+                                
+                                {/* Balance */}
+                                <div className="text-right font-bold pr-8">
+                                  <CurrencyDisplay 
+                                    amount={Number(account.current_balance)} 
+                                    currency={account.currency}
+                                    size="md"
+                                    enablePrivacy
+                                  />
+                                </div>
+                                
+                                {/* USD Equivalent */}
+                                <div className="text-sm text-muted-foreground">
+                                  {account.currency === 'ARS' ? (
+                                    `≈ US$ ${(Number(account.current_balance) / 1200).toFixed(2)}`
+                                  ) : (
+                                    <span className="text-income">$ {(Number(account.current_balance) * 1200).toLocaleString('es-AR')}</span>
+                                  )}
+                                </div>
+                                
+                                {/* Actions */}
+                                <div className="flex items-center justify-end gap-2">
+                                  <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg" title="Sincronizar Saldo">
+                                    <RefreshCw className="h-4 w-4" />
+                                  </Button>
+                                  <Link to={`/accounts/${account.id}/edit`}>
+                                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg">
+                                      <Pencil className="h-4 w-4" />
+                                    </Button>
+                                  </Link>
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg">
+                                        <MoreVertical className="h-4 w-4" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      <DropdownMenuItem 
+                                        className="text-destructive"
+                                        onClick={() => setDeleteId(account.id)}
+                                      >
+                                        <Trash2 className="h-4 w-4 mr-2" />
+                                        Eliminar
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 

@@ -15,12 +15,25 @@ import {
   Wallet,
   Plus,
   ArrowRight,
-  DollarSign
+  DollarSign,
+  Eye,
+  Building2,
+  Smartphone,
+  Banknote,
+  Bitcoin
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { getMonthName, getCurrentPeriod } from '@/lib/format';
 import { useIsMobile } from '@/hooks/use-mobile';
-import type { Account, Transaction } from '@/types/finance';
+import type { Account, Transaction, AccountType } from '@/types/finance';
+
+const accountTypeIcons: Record<AccountType, typeof Wallet> = {
+  bank: Building2,
+  wallet: Smartphone,
+  cash: Banknote,
+  investment: TrendingUp,
+  crypto: Bitcoin,
+};
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -54,13 +67,17 @@ export default function Dashboard() {
       
       const { data, error } = await supabase
         .from('transactions')
-        .select('*')
+        .select(`
+          *,
+          category:categories(name, icon, color)
+        `)
         .gte('transaction_date', startDate)
         .lte('transaction_date', endDate)
-        .order('transaction_date', { ascending: false });
+        .order('transaction_date', { ascending: false })
+        .limit(10);
       
       if (error) throw error;
-      return data as Transaction[];
+      return data as (Transaction & { category: { name: string; icon: string; color: string } | null })[];
     },
     enabled: !!user,
   });
@@ -204,39 +221,29 @@ export default function Dashboard() {
               />
             ) : (
               <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4 snap-x snap-mandatory">
-                {accounts.slice(0, 5).map((account) => (
-                  <Link key={account.id} to={`/accounts/${account.id}`} className="snap-start">
-                    <Card 
-                      className="glass border-border/50 min-w-[200px] hover:border-primary/50 transition-colors"
-                      style={{ borderLeftColor: account.color, borderLeftWidth: '3px' }}
-                    >
-                      <CardContent className="p-4">
-                        <p className="text-sm font-medium text-foreground truncate">{account.name}</p>
-                        <p className="text-xs text-muted-foreground capitalize mb-2">
-                          {account.account_type === 'bank' && 'Cuenta bancaria'}
-                          {account.account_type === 'wallet' && 'Billetera virtual'}
-                          {account.account_type === 'cash' && 'Efectivo'}
-                          {account.account_type === 'investment' && 'Inversiones'}
-                          {account.account_type === 'crypto' && 'Crypto'}
-                        </p>
-                        <CurrencyDisplay 
-                          amount={Number(account.current_balance)} 
-                          currency={account.currency} 
-                          size="md"
-                          enablePrivacy
-                        />
-                      </CardContent>
-                    </Card>
-                  </Link>
-                ))}
-                <Link to="/accounts/new" className="snap-start">
-                  <Card className="glass border-border/50 border-dashed min-w-[200px] h-full flex items-center justify-center hover:border-primary/50 transition-colors">
-                    <CardContent className="p-4 flex flex-col items-center justify-center text-muted-foreground">
-                      <Plus className="h-8 w-8 mb-2" />
-                      <span className="text-sm">Agregar</span>
-                    </CardContent>
-                  </Card>
-                </Link>
+                {accounts.slice(0, 5).map((account) => {
+                  const Icon = accountTypeIcons[account.account_type];
+                  return (
+                    <Link key={account.id} to={`/accounts/${account.id}`} className="snap-start">
+                      <Card 
+                        className="glass border-border/50 min-w-[200px] h-[120px] hover:border-primary/50 transition-all hover:-translate-y-1"
+                      >
+                        <CardContent className="p-4 flex flex-col justify-between h-full">
+                          <div>
+                            <Icon className="h-5 w-5 text-primary mb-1" />
+                            <p className="text-sm text-muted-foreground truncate">{account.name}</p>
+                          </div>
+                          <CurrencyDisplay 
+                            amount={Number(account.current_balance)} 
+                            currency={account.currency} 
+                            size="md"
+                            enablePrivacy
+                          />
+                        </CardContent>
+                      </Card>
+                    </Link>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -267,253 +274,8 @@ export default function Dashboard() {
             ) : (
               <div className="space-y-2">
                 {transactions.slice(0, 5).map((transaction) => (
-                  <Card key={transaction.id} className="glass border-border/50">
-                    <CardContent className="p-3 flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className={`rounded-full p-2 ${
-                          transaction.transaction_type === 'income' 
-                            ? 'bg-income/10' 
-                            : transaction.transaction_type === 'expense'
-                            ? 'bg-expense/10'
-                            : 'bg-transfer/10'
-                        }`}>
-                          {transaction.transaction_type === 'income' ? (
-                            <TrendingUp className="h-4 w-4 text-income" />
-                          ) : transaction.transaction_type === 'expense' ? (
-                            <TrendingDown className="h-4 w-4 text-expense" />
-                          ) : (
-                            <ArrowRight className="h-4 w-4 text-transfer" />
-                          )}
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-foreground">
-                            {transaction.description || 'Sin descripción'}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(transaction.transaction_date).toLocaleDateString('es-AR')}
-                          </p>
-                        </div>
-                      </div>
-                      <CurrencyDisplay 
-                        amount={Number(transaction.amount)} 
-                        currency={transaction.currency}
-                        showSign
-                        isExpense={transaction.transaction_type === 'expense'}
-                        size="sm"
-                      />
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Desktop Layout - Two column grid
-  return (
-    <div className="min-h-screen bg-background">
-      <PageHeader 
-        title="Finance Pro" 
-        subtitle={`${getMonthName(month)} ${year}`}
-        action={
-          <div className="flex items-center gap-4">
-            <PeriodSelector
-              month={month}
-              year={year}
-              onMonthChange={setMonth}
-              onYearChange={setYear}
-            />
-            <Link to="/transactions/new">
-              <Button size="icon" className="rounded-full">
-                <Plus className="h-5 w-5" />
-              </Button>
-            </Link>
-          </div>
-        }
-      />
-
-      <div className="p-6">
-        <div className="max-w-6xl mx-auto">
-          {/* Top row: Patrimonio + Resumen del mes */}
-          <div className="grid grid-cols-12 gap-6 mb-6">
-            {/* Patrimonio Total - takes 5 cols */}
-            <Card className="col-span-5 glass border-border/50 overflow-hidden">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <DollarSign className="h-5 w-5 text-primary" />
-                  <span className="text-sm font-medium text-muted-foreground">Patrimonio Total</span>
-                </div>
-                <div className="space-y-2">
-                  <CurrencyDisplay 
-                    amount={totalPatrimonioARS} 
-                    currency="ARS" 
-                    size="xl"
-                    className="block"
-                    enablePrivacy
-                  />
-                  {totalPatrimonioUSD > 0 && (
-                    <CurrencyDisplay 
-                      amount={totalPatrimonioUSD} 
-                      currency="USD" 
-                      size="lg"
-                      className="block text-muted-foreground"
-                      enablePrivacy
-                    />
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Ingresos - takes 3.5 cols */}
-            <Card className="col-span-3 glass border-border/50">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="rounded-full bg-income/10 p-2">
-                    <TrendingUp className="h-5 w-5 text-income" />
-                  </div>
-                  <span className="text-sm text-muted-foreground">Ingresos</span>
-                </div>
-                <CurrencyDisplay 
-                  amount={monthlyIncomeARS} 
-                  currency="ARS" 
-                  size="xl"
-                  className="text-income"
-                  enablePrivacy
-                />
-                {monthlyIncomeUSD > 0 && (
-                  <CurrencyDisplay 
-                    amount={monthlyIncomeUSD} 
-                    currency="USD" 
-                    size="md"
-                    className="block text-muted-foreground mt-1"
-                    enablePrivacy
-                  />
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Egresos - takes 4 cols */}
-            <Card className="col-span-4 glass border-border/50">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="rounded-full bg-expense/10 p-2">
-                    <TrendingDown className="h-5 w-5 text-expense" />
-                  </div>
-                  <span className="text-sm text-muted-foreground">Egresos</span>
-                </div>
-                <CurrencyDisplay 
-                  amount={monthlyExpenseARS} 
-                  currency="ARS" 
-                  size="xl"
-                  className="text-expense"
-                />
-                {monthlyExpenseUSD > 0 && (
-                  <CurrencyDisplay 
-                    amount={monthlyExpenseUSD} 
-                    currency="USD" 
-                    size="md"
-                    className="block text-muted-foreground mt-1"
-                  />
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Bottom row: Bolsillos + Movimientos side by side */}
-          <div className="grid grid-cols-2 gap-6">
-            {/* Cuentas / Bolsillos */}
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-foreground">Tus Bolsillos</h2>
-                <Link to="/accounts" className="text-sm text-primary flex items-center gap-1 hover:underline">
-                  Ver todos <ArrowRight className="h-4 w-4" />
-                </Link>
-              </div>
-
-              {(!accounts || accounts.length === 0) ? (
-                <EmptyState
-                  icon={Wallet}
-                  title="Sin cuentas"
-                  description="Agrega tu primera cuenta para comenzar a registrar movimientos"
-                  action={
-                    <Link to="/accounts/new">
-                      <Button>
-                        <Plus className="h-4 w-4 mr-2" />
-                        Agregar cuenta
-                      </Button>
-                    </Link>
-                  }
-                />
-              ) : (
-                <div className="grid grid-cols-2 gap-3">
-                  {accounts.slice(0, 4).map((account) => (
-                    <Link key={account.id} to={`/accounts/${account.id}`}>
-                      <Card 
-                        className="glass border-border/50 hover:border-primary/50 transition-colors h-full"
-                        style={{ borderLeftColor: account.color, borderLeftWidth: '3px' }}
-                      >
-                        <CardContent className="p-4">
-                          <p className="text-sm font-medium text-foreground truncate">{account.name}</p>
-                          <p className="text-xs text-muted-foreground capitalize mb-2">
-                            {account.account_type === 'bank' && 'Cuenta bancaria'}
-                            {account.account_type === 'wallet' && 'Billetera virtual'}
-                            {account.account_type === 'cash' && 'Efectivo'}
-                            {account.account_type === 'investment' && 'Inversiones'}
-                            {account.account_type === 'crypto' && 'Crypto'}
-                          </p>
-                          <CurrencyDisplay 
-                            amount={Number(account.current_balance)} 
-                            currency={account.currency} 
-                            size="md"
-                            enablePrivacy
-                          />
-                        </CardContent>
-                      </Card>
-                    </Link>
-                  ))}
-                  
-                  <Link to="/accounts/new">
-                    <Card className="glass border-border/50 border-dashed h-full flex items-center justify-center hover:border-primary/50 transition-colors min-h-[120px]">
-                      <CardContent className="p-4 flex flex-col items-center justify-center text-muted-foreground">
-                        <Plus className="h-8 w-8 mb-2" />
-                        <span className="text-sm">Agregar</span>
-                      </CardContent>
-                    </Card>
-                  </Link>
-                </div>
-              )}
-            </div>
-
-            {/* Últimos movimientos */}
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-foreground">Últimos Movimientos</h2>
-                <Link to="/transactions" className="text-sm text-primary flex items-center gap-1 hover:underline">
-                  Ver todos <ArrowRight className="h-4 w-4" />
-                </Link>
-              </div>
-
-              {(!transactions || transactions.length === 0) ? (
-                <EmptyState
-                  icon={TrendingUp}
-                  title="Sin movimientos"
-                  description="Registra tu primer ingreso o egreso"
-                  action={
-                    <Link to="/transactions/new">
-                      <Button>
-                        <Plus className="h-4 w-4 mr-2" />
-                        Nuevo movimiento
-                      </Button>
-                    </Link>
-                  }
-                />
-              ) : (
-                <div className="space-y-2">
-                  {transactions.slice(0, 6).map((transaction) => (
-                    <Card key={transaction.id} className="glass border-border/50 hover:border-primary/50 transition-colors">
+                  <Link key={transaction.id} to={`/transactions/${transaction.id}`}>
+                    <Card className="glass border-border/50 hover:border-primary/50 transition-colors">
                       <CardContent className="p-3 flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <div className={`rounded-full p-2 ${
@@ -536,7 +298,7 @@ export default function Dashboard() {
                               {transaction.description || 'Sin descripción'}
                             </p>
                             <p className="text-xs text-muted-foreground">
-                              {new Date(transaction.transaction_date).toLocaleDateString('es-AR')}
+                              {transaction.category?.name || 'Sin categoría'}
                             </p>
                           </div>
                         </div>
@@ -549,11 +311,275 @@ export default function Dashboard() {
                         />
                       </CardContent>
                     </Card>
-                  ))}
-                </div>
-              )}
-            </div>
+                  </Link>
+                ))}
+              </div>
+            )}
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Desktop Layout - Matching HTML template
+  return (
+    <div className="min-h-screen bg-background">
+      <PageHeader 
+        title="Panel General" 
+        subtitle="Resumen de tu salud financiera"
+        action={
+          <div className="flex items-center gap-4">
+            <PeriodSelector
+              month={month}
+              year={year}
+              onMonthChange={setMonth}
+              onYearChange={setYear}
+            />
+            {/* Dollar Badge */}
+            <div className="flex items-center gap-2 bg-card px-4 py-2 rounded-2xl border border-border text-income">
+              <TrendingUp className="h-4 w-4" />
+              <span className="font-semibold">MEP $1200</span>
+            </div>
+            <Link to="/transactions/new">
+              <Button size="icon" className="rounded-full">
+                <Plus className="h-5 w-5" />
+              </Button>
+            </Link>
+          </div>
+        }
+      />
+
+      <div className="p-6">
+        <div className="max-w-7xl mx-auto space-y-6">
+          {/* Dashboard Grid - 2fr 1fr like template */}
+          <div className="grid grid-cols-3 gap-6">
+            {/* Health Summary Card - takes 2 cols */}
+            <Card className="col-span-2 glass border-border/50 bg-gradient-to-br from-card to-primary/5">
+              <CardContent className="p-8 flex justify-between items-center">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-2">Patrimonio Neto Total</p>
+                  <div className="flex items-center gap-3">
+                    <CurrencyDisplay 
+                      amount={totalPatrimonioARS} 
+                      currency="ARS" 
+                      size="xl"
+                      className="text-3xl font-extrabold"
+                      enablePrivacy
+                    />
+                    <Eye className="h-5 w-5 text-muted-foreground cursor-pointer hover:text-primary" />
+                  </div>
+                  {totalPatrimonioUSD > 0 && (
+                    <p className="text-muted-foreground mt-2">
+                      ≈ <CurrencyDisplay 
+                        amount={totalPatrimonioUSD} 
+                        currency="USD" 
+                        size="md"
+                        className="inline"
+                        enablePrivacy
+                      />
+                    </p>
+                  )}
+                </div>
+                
+                {/* Budget Semaphore */}
+                <div className="text-center">
+                  <div className="relative w-20 h-20">
+                    <svg className="w-20 h-20 transform -rotate-90">
+                      <circle
+                        cx="40"
+                        cy="40"
+                        r="35"
+                        stroke="currentColor"
+                        strokeWidth="8"
+                        fill="transparent"
+                        className="text-muted"
+                      />
+                      <circle
+                        cx="40"
+                        cy="40"
+                        r="35"
+                        stroke="currentColor"
+                        strokeWidth="8"
+                        fill="transparent"
+                        strokeDasharray={`${70 * 2.2} ${100 * 2.2}`}
+                        className="text-income"
+                      />
+                    </svg>
+                    <span className="absolute inset-0 flex items-center justify-center font-bold text-sm">
+                      70%
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">Presupuesto usado</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Flujo del Mes */}
+            <Card className="glass border-border/50">
+              <CardContent className="p-6">
+                <h3 className="font-semibold mb-4">Flujo del Mes</h3>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Ingresos</p>
+                    <p className="text-income font-bold">
+                      + <CurrencyDisplay amount={monthlyIncomeARS} currency="ARS" size="md" className="inline" enablePrivacy />
+                    </p>
+                    {monthlyIncomeUSD > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        + <CurrencyDisplay amount={monthlyIncomeUSD} currency="USD" size="sm" className="inline" enablePrivacy />
+                      </p>
+                    )}
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-muted-foreground">Egresos</p>
+                    <p className="text-expense font-bold">
+                      - <CurrencyDisplay amount={monthlyExpenseARS} currency="ARS" size="md" className="inline" />
+                    </p>
+                    {monthlyExpenseUSD > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        - <CurrencyDisplay amount={monthlyExpenseUSD} currency="USD" size="sm" className="inline" />
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Bolsillos Section */}
+          <section>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-lg">Tus Bolsillos</h3>
+              <Link to="/accounts" className="text-sm text-primary hover:underline">
+                Ver todas
+              </Link>
+            </div>
+            
+            {(!accounts || accounts.length === 0) ? (
+              <EmptyState
+                icon={Wallet}
+                title="Sin cuentas"
+                description="Agrega tus cuentas bancarias, billeteras o efectivo"
+                action={
+                  <Link to="/accounts/new">
+                    <Button>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Agregar cuenta
+                    </Button>
+                  </Link>
+                }
+              />
+            ) : (
+              <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
+                {accounts.map((account) => {
+                  const Icon = accountTypeIcons[account.account_type];
+                  const isUSD = account.currency === 'USD';
+                  return (
+                    <Link key={account.id} to={`/accounts/${account.id}`}>
+                      <Card 
+                        className={`min-w-[200px] h-[120px] glass border-border/50 hover:-translate-y-1 transition-all cursor-pointer ${
+                          isUSD ? 'bg-gradient-to-br from-income/5 to-income/20' : ''
+                        }`}
+                      >
+                        <CardContent className="p-4 flex flex-col justify-between h-full">
+                          <div>
+                            <Icon className={`h-5 w-5 ${isUSD ? 'text-income' : 'text-primary'} mb-1`} />
+                            <p className="text-sm text-muted-foreground">{account.name}</p>
+                          </div>
+                          <CurrencyDisplay 
+                            amount={Number(account.current_balance)} 
+                            currency={account.currency}
+                            size="md"
+                            className="font-bold"
+                            enablePrivacy
+                          />
+                        </CardContent>
+                      </Card>
+                    </Link>
+                  );
+                })}
+                <Link to="/accounts/new">
+                  <Card className="min-w-[200px] h-[120px] glass border-border/50 border-dashed hover:border-primary/50 transition-all cursor-pointer">
+                    <CardContent className="p-4 flex flex-col items-center justify-center h-full text-muted-foreground">
+                      <Plus className="h-8 w-8 mb-2" />
+                      <span className="text-sm">Agregar</span>
+                    </CardContent>
+                  </Card>
+                </Link>
+              </div>
+            )}
+          </section>
+
+          {/* Últimos Movimientos */}
+          <section>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-lg">Últimos Movimientos</h3>
+              <Link to="/transactions" className="text-sm text-primary hover:underline">
+                Ver todos
+              </Link>
+            </div>
+
+            {(!transactions || transactions.length === 0) ? (
+              <EmptyState
+                icon={TrendingUp}
+                title="Sin movimientos"
+                description="Registra tu primer ingreso o egreso"
+                action={
+                  <Link to="/transactions/new">
+                    <Button>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Nuevo movimiento
+                    </Button>
+                  </Link>
+                }
+              />
+            ) : (
+              <div className="space-y-2">
+                {transactions.slice(0, 5).map((transaction) => (
+                  <Link key={transaction.id} to={`/transactions/${transaction.id}`}>
+                    <Card className="glass border-border/50 hover:bg-secondary/30 transition-colors">
+                      <CardContent className="p-4 flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <div className={`w-11 h-11 rounded-full flex items-center justify-center ${
+                            transaction.transaction_type === 'income' 
+                              ? 'bg-income/10' 
+                              : transaction.transaction_type === 'expense'
+                              ? 'bg-expense/10'
+                              : 'bg-warning/10'
+                          }`}>
+                            {transaction.transaction_type === 'income' ? (
+                              <TrendingUp className="h-5 w-5 text-income" />
+                            ) : transaction.transaction_type === 'expense' ? (
+                              <TrendingDown className="h-5 w-5 text-expense" />
+                            ) : (
+                              <ArrowRight className="h-5 w-5 text-warning" />
+                            )}
+                          </div>
+                          <div>
+                            <h4 className="font-medium">{transaction.description || 'Sin descripción'}</h4>
+                            <p className="text-sm text-muted-foreground">
+                              {transaction.category?.name || 'Sin categoría'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className={`font-bold ${
+                          transaction.transaction_type === 'expense' ? 'text-expense' : 'text-income'
+                        }`}>
+                          {transaction.transaction_type === 'expense' ? '- ' : '+ '}
+                          <CurrencyDisplay 
+                            amount={Number(transaction.amount)} 
+                            currency={transaction.currency}
+                            size="md"
+                            className="inline"
+                          />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </section>
         </div>
       </div>
     </div>
