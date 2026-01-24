@@ -147,13 +147,23 @@ export function AiAssistantModal({
     enabled: open && !!user,
   });
 
-  // Reset state when modal opens
+  // Reset state when modal opens/closes and STOP microphone when closing
   useEffect(() => {
     if (open) {
       setState('idle');
       setTextInput('');
       setErrorMessage('');
       setParsedResult(null);
+      setIsListening(false);
+    } else {
+      // CRITICAL: Stop the microphone when modal closes
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch (e) {
+          // Ignore
+        }
+      }
       setIsListening(false);
     }
   }, [open]);
