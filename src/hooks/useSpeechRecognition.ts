@@ -2,8 +2,6 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 
 interface UseSpeechRecognitionOptions {
   language?: string;
-  continuous?: boolean;
-  interimResults?: boolean;
 }
 
 interface UseSpeechRecognitionReturn {
@@ -16,14 +14,18 @@ interface UseSpeechRecognitionReturn {
   resetTranscript: () => void;
 }
 
+// Type declarations for Web Speech API
+declare global {
+  interface Window {
+    SpeechRecognition: any;
+    webkitSpeechRecognition: any;
+  }
+}
+
 export function useSpeechRecognition(
   options: UseSpeechRecognitionOptions = {}
 ): UseSpeechRecognitionReturn {
-  const {
-    language = 'es-AR',
-    continuous = false,
-    interimResults = true,
-  } = options;
+  const { language = 'es-AR' } = options;
 
   const [transcript, setTranscript] = useState('');
   const [isListening, setIsListening] = useState(false);
@@ -41,21 +43,21 @@ export function useSpeechRecognition(
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognition = new SpeechRecognition();
 
+    // Simple configuration like the working example
+    recognition.continuous = false;
     recognition.lang = language;
-    recognition.continuous = continuous;
-    recognition.interimResults = interimResults;
+    recognition.interimResults = false;
 
-    recognition.onstart = () => {
-      setIsListening(true);
-      setError(null);
-    };
-
-    recognition.onend = () => {
+    recognition.onresult = (event: any) => {
+      const result = event.results[0][0].transcript;
+      setTranscript(result);
       setIsListening(false);
     };
 
-    recognition.onerror = (event) => {
+    recognition.onerror = (event: any) => {
+      console.error('Speech recognition error:', event.error);
       setIsListening(false);
+      
       switch (event.error) {
         case 'no-speech':
           setError('No se detectó voz. Intenta de nuevo.');
@@ -69,65 +71,55 @@ export function useSpeechRecognition(
         case 'network':
           setError('Error de red. Verifica tu conexión.');
           break;
+        case 'aborted':
+          // User stopped, not an error
+          setError(null);
+          break;
         default:
           setError(`Error: ${event.error}`);
       }
     };
 
-    recognition.onresult = (event) => {
-      let finalTranscript = '';
-      let interimTranscript = '';
-
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const result = event.results[i];
-        if (result.isFinal) {
-          finalTranscript += result[0].transcript;
-        } else {
-          interimTranscript += result[0].transcript;
-        }
-      }
-
-      if (finalTranscript) {
-        setTranscript(prev => prev + finalTranscript);
-      } else if (interimResults) {
-        // Show interim results while speaking
-        setTranscript(prev => {
-          const base = prev.replace(/\s*\[.*\]$/, ''); // Remove previous interim
-          return base + (interimTranscript ? ` [${interimTranscript}]` : '');
-        });
-      }
+    recognition.onend = () => {
+      setIsListening(false);
     };
 
     recognitionRef.current = recognition;
 
     return () => {
-      recognition.abort();
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort();
+        } catch (e) {
+          // Ignore
+        }
+      }
     };
-  }, [language, continuous, interimResults, isSupported]);
+  }, [language, isSupported]);
 
   const startListening = useCallback(() => {
-    if (!recognitionRef.current || isListening) return;
+    if (!recognitionRef.current) return;
     
     setError(null);
-    setTranscript('');
     
     try {
       recognitionRef.current.start();
+      setIsListening(true);
     } catch (err) {
-      // Already started
-      console.warn('Recognition already started');
+      console.warn('Recognition start error:', err);
     }
-  }, [isListening]);
+  }, []);
 
   const stopListening = useCallback(() => {
-    if (!recognitionRef.current || !isListening) return;
+    if (!recognitionRef.current) return;
     
     try {
       recognitionRef.current.stop();
+      setIsListening(false);
     } catch (err) {
-      console.warn('Recognition already stopped');
+      console.warn('Recognition stop error:', err);
     }
-  }, [isListening]);
+  }, []);
 
   const resetTranscript = useCallback(() => {
     setTranscript('');
@@ -143,12 +135,4 @@ export function useSpeechRecognition(
     stopListening,
     resetTranscript,
   };
-}
-
-// Type declarations for Web Speech API
-declare global {
-  interface Window {
-    SpeechRecognition: any;
-    webkitSpeechRecognition: any;
-  }
 }
