@@ -2,3 +2,6 @@ project_id = "oyitbpnlghdraucgnooa"
 
 [functions.process-recurring-expenses]
 verify_jwt = false
+
+[functions.ai-transaction-parser]
+verify_jwt = true
