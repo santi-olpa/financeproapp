@@ -18,6 +18,8 @@ import AccountDetail from "./pages/accounts/AccountDetail";
 import EditAccount from "./pages/accounts/EditAccount";
 import Transactions from "./pages/Transactions";
 import NewTransaction from "./pages/transactions/NewTransaction";
+import TransactionDetail from "./pages/transactions/TransactionDetail";
+import EditTransaction from "./pages/transactions/EditTransaction";
 import Categories from "./pages/Categories";
 import RecurringExpenses from "./pages/expenses/RecurringExpenses";
 import Reports from "./pages/Reports";
@@ -62,6 +64,8 @@ const AppRoutes = () => (
       <Route path="/accounts/:id/edit" element={<EditAccount />} />
       <Route path="/transactions" element={<Transactions />} />
       <Route path="/transactions/new" element={<NewTransaction />} />
+      <Route path="/transactions/:id" element={<TransactionDetail />} />
+      <Route path="/transactions/:id/edit" element={<EditTransaction />} />
       <Route path="/categories" element={<Categories />} />
       <Route path="/expenses" element={<RecurringExpenses />} />
       <Route path="/reports" element={<Reports />} />
