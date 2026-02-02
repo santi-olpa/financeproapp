@@ -23,6 +23,7 @@ import RecurringExpenses from "./pages/expenses/RecurringExpenses";
 import Reports from "./pages/Reports";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
+import OAuthInitiate from "./pages/auth/OAuthInitiate";
 
 const queryClient = new QueryClient();
 
@@ -49,6 +50,8 @@ const AppRoutes = () => (
     {/* Public routes */}
     <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
     <Route path="/signup" element={<PublicRoute><SignUp /></PublicRoute>} />
+    {/* OAuth broker route (Lovable Cloud OAuth flow) */}
+    <Route path="/~oauth/initiate" element={<OAuthInitiate />} />
     
     {/* Protected routes */}
     <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
