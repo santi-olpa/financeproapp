@@ -36,6 +36,9 @@ import { es } from 'date-fns/locale';
 import type { RecurringExpense, Category, Account, Currency, RecurringFrequency, PriceHistoryEntry, Transaction } from '@/types/finance';
 import { FREQUENCY_LABELS, CURRENCY_SYMBOLS } from '@/types/finance';
 import { getMonthName, getCurrentPeriod } from '@/lib/format';
+import { PeriodSelector } from '@/components/reports/PeriodSelector';
+import { Progress } from '@/components/ui/progress';
+import { CheckCircle2, Circle, ChevronLeft, ChevronRight } from 'lucide-react';
 
 export default function RecurringExpenses() {
   const { user } = useAuth();
@@ -47,7 +50,9 @@ export default function RecurringExpenses() {
   const [isPriceUpdateOpen, setIsPriceUpdateOpen] = useState(false);
   const [selectedExpenseForUpdate, setSelectedExpenseForUpdate] = useState<RecurringExpense | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const { month, year } = getCurrentPeriod();
+  const currentPeriod = getCurrentPeriod();
+  const [month, setMonth] = useState(currentPeriod.month);
+  const [year, setYear] = useState(currentPeriod.year);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -139,15 +144,21 @@ export default function RecurringExpenses() {
     enabled: !!user,
   });
 
-  // Fetch installment transactions (pagos en cuotas)
+  // Fetch installment transactions for selected month
   const { data: installmentTransactions } = useQuery({
-    queryKey: ['transactions', 'installments'],
+    queryKey: ['transactions', 'installments', month, year],
     queryFn: async () => {
+      const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+      const lastDay = new Date(year, month, 0).getDate();
+      const endDate = `${year}-${String(month).padStart(2, '0')}-${lastDay}`;
+      
       const { data, error } = await supabase
         .from('transactions')
         .select(`*, category:categories(*), account:accounts!transactions_account_id_fkey(name, color)`)
         .eq('transaction_type', 'expense')
         .eq('has_installments', true)
+        .gte('transaction_date', startDate)
+        .lte('transaction_date', endDate)
         .order('transaction_date', { ascending: false });
       
       if (error) throw error;
@@ -156,22 +167,21 @@ export default function RecurringExpenses() {
     enabled: !!user,
   });
 
-  // Fetch installments for those transactions
-  const { data: installments } = useQuery({
-    queryKey: ['installments', installmentTransactions?.map(t => t.id)],
+  // Fetch ALL installment transactions for progress tracking (to know total paid across all months)
+  const { data: allInstallmentTransactions } = useQuery({
+    queryKey: ['transactions', 'all-installments'],
     queryFn: async () => {
-      if (!installmentTransactions?.length) return [];
-      const ids = installmentTransactions.map(t => t.id);
       const { data, error } = await supabase
-        .from('installments')
-        .select('*')
-        .in('transaction_id', ids)
-        .order('installment_number', { ascending: true });
+        .from('transactions')
+        .select('description, current_installment, total_installments, transaction_date, amount, currency')
+        .eq('transaction_type', 'expense')
+        .eq('has_installments', true)
+        .order('transaction_date', { ascending: true });
       
       if (error) throw error;
       return data;
     },
-    enabled: !!user && !!installmentTransactions?.length,
+    enabled: !!user,
   });
 
   // Mutations
@@ -304,6 +314,30 @@ export default function RecurringExpenses() {
     return acc;
   }, {} as Record<string, { total: number; color: string }>) ?? {};
 
+  // Calculate cuotas total for selected month (sum of installment tx amounts in this month)
+  const cuotasTarjetasTotal = installmentTransactions?.reduce((sum, tx) => sum + Number(tx.amount), 0) ?? 0;
+
+  // Helper: get base purchase name by removing "(X/Y)" suffix
+  const getBaseName = (desc: string | null) => {
+    if (!desc) return 'Sin descripción';
+    return desc.replace(/\s*\(\d+\/\d+\)\s*$/, '').trim() || desc;
+  };
+
+  // Helper: find how many cuotas of this purchase are already paid (past months + current)
+  const getPurchaseProgress = (tx: Transaction) => {
+    const baseName = getBaseName(tx.description);
+    const total = tx.total_installments || 1;
+    // Count how many transactions with same base name exist up to selected month
+    const paidCount = allInstallmentTransactions?.filter(t => {
+      const tBaseName = getBaseName(t.description);
+      const tDate = new Date(t.transaction_date);
+      const isBeforeOrCurrentMonth = tDate.getFullYear() < year || 
+        (tDate.getFullYear() === year && tDate.getMonth() + 1 <= month);
+      return tBaseName === baseName && t.total_installments === total && isBeforeOrCurrentMonth;
+    }).length ?? 0;
+    return { paidCount, total, baseName };
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -316,7 +350,8 @@ export default function RecurringExpenses() {
   if (isMobile) {
     return (
       <div className="min-h-screen bg-background">
-        <div className="p-4">
+        <div className="p-4 space-y-4">
+          <PeriodSelector month={month} year={year} onMonthChange={setMonth} onYearChange={setYear} />
         <Tabs defaultValue="monthly" className="w-full">
             <TabsList className="grid w-full grid-cols-3 mb-4">
               <TabsTrigger value="monthly">Gastos</TabsTrigger>
@@ -465,13 +500,13 @@ export default function RecurringExpenses() {
 
             <TabsContent value="cards" className="space-y-3">
               {(!installmentTransactions || installmentTransactions.length === 0) ? (
-                <EmptyState icon={CreditCard} title="Sin cuotas" description="Los egresos en cuotas se mostrarán aquí" />
+                <EmptyState icon={CreditCard} title="Sin cuotas este mes" description={`No hay cuotas programadas para ${getMonthName(month)}`} />
               ) : (
                 installmentTransactions.map((tx) => {
-                  const txInstallments = installments?.filter(i => i.transaction_id === tx.id) || [];
-                  const paidCount = txInstallments.filter(i => i.is_paid).length;
-                  const totalCount = tx.total_installments || txInstallments.length;
-                  const progress = totalCount > 0 ? Math.round((paidCount / totalCount) * 100) : 0;
+                  const { paidCount, total, baseName } = getPurchaseProgress(tx);
+                  const progress = total > 0 ? Math.round((paidCount / total) * 100) : 0;
+                  const isFullyPaid = paidCount >= total;
+                  const currentInstallment = tx.current_installment || 1;
                   
                   return (
                     <Card key={tx.id} className="glass border-border/50" onClick={() => navigate(`/transactions/${tx.id}`)}>
@@ -479,16 +514,21 @@ export default function RecurringExpenses() {
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
                             <CreditCard className="h-4 w-4 text-warning" />
-                            <span className="font-medium text-sm truncate">{tx.description || 'Sin descripción'}</span>
+                            <span className="font-medium text-sm truncate">{baseName}</span>
                           </div>
-                          <Badge variant="secondary" className="text-xs">{paidCount}/{totalCount}</Badge>
+                          <Badge variant={isFullyPaid ? 'default' : 'secondary'} className={`text-xs ${isFullyPaid ? 'bg-income/10 text-income' : ''}`}>
+                            Cuota {currentInstallment}/{total}
+                          </Badge>
                         </div>
                         <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
-                          <span>{tx.account?.name || 'Sin cuenta'}</span>
+                          <span>{tx.account?.name || 'Sin cuenta'} • {tx.category?.name || ''}</span>
                           <CurrencyDisplay amount={Number(tx.amount)} currency={tx.currency} size="sm" className="font-semibold text-foreground" />
                         </div>
-                        <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
-                          <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${progress}%` }} />
+                        <div className="flex items-center gap-2">
+                          <div className="h-1.5 flex-1 bg-muted rounded-full overflow-hidden">
+                            <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${progress}%` }} />
+                          </div>
+                          <span className="text-xs text-muted-foreground">{paidCount}/{total}</span>
                         </div>
                       </CardContent>
                     </Card>
@@ -516,14 +556,11 @@ export default function RecurringExpenses() {
   // Desktop Layout - Like HTML template (gastos.html)
   return (
     <div className="min-h-screen bg-background">
-      <PageHeader 
+       <PageHeader 
         title="Gestión de Gastos" 
         subtitle="Control y proyección de egresos"
         action={
-          <div className="flex items-center gap-2 bg-card px-4 py-2 rounded-full border border-border cursor-pointer">
-            <Calendar className="h-4 w-4" />
-            <span>{getMonthName(month)} {year}</span>
-          </div>
+          <PeriodSelector month={month} year={year} onMonthChange={setMonth} onYearChange={setYear} />
         }
       />
 
@@ -550,14 +587,16 @@ export default function RecurringExpenses() {
             <Card className="glass border-border/50">
               <CardContent className="p-4">
                 <p className="text-xs text-muted-foreground uppercase mb-1">Cuotas Tarjetas</p>
-                <h3 className="text-xl font-extrabold text-warning">$ 56.999,94</h3>
+                <h3 className="text-xl font-extrabold text-warning">
+                  <CurrencyDisplay amount={cuotasTarjetasTotal} currency="ARS" size="xl" className="text-warning" />
+                </h3>
               </CardContent>
             </Card>
             <Card className="glass border-border/50 bg-gradient-to-br from-card to-primary/10">
               <CardContent className="p-4">
                 <p className="text-xs text-muted-foreground uppercase mb-1">Total Comprometido</p>
                 <h3 className="text-xl font-extrabold">
-                  <CurrencyDisplay amount={totalMonthlyExpenses + projectedRecurringTotal} currency="ARS" size="xl" />
+                  <CurrencyDisplay amount={totalMonthlyExpenses + projectedRecurringTotal + cuotasTarjetasTotal} currency="ARS" size="xl" />
                 </h3>
               </CardContent>
             </Card>
@@ -673,14 +712,14 @@ export default function RecurringExpenses() {
 
             <TabsContent value="cards" className="space-y-4">
               {(!installmentTransactions || installmentTransactions.length === 0) ? (
-                <EmptyState icon={CreditCard} title="Sin cuotas pendientes" description="Los egresos marcados como pago en cuotas se mostrarán aquí" />
+                <EmptyState icon={CreditCard} title="Sin cuotas este mes" description={`No hay cuotas programadas para ${getMonthName(month)} ${year}`} />
               ) : (
                 <div className="space-y-3">
                   {installmentTransactions.map((tx) => {
-                    const txInstallments = installments?.filter(i => i.transaction_id === tx.id) || [];
-                    const paidCount = txInstallments.filter(i => i.is_paid).length;
-                    const totalCount = tx.total_installments || txInstallments.length;
-                    const progress = totalCount > 0 ? Math.round((paidCount / totalCount) * 100) : 0;
+                    const { paidCount, total, baseName } = getPurchaseProgress(tx);
+                    const progress = total > 0 ? Math.round((paidCount / total) * 100) : 0;
+                    const isFullyPaid = paidCount >= total;
+                    const currentInstallment = tx.current_installment || 1;
                     
                     return (
                       <Card key={tx.id} className="glass border-border/50 hover:border-primary/50 transition-colors cursor-pointer" onClick={() => navigate(`/transactions/${tx.id}`)}>
@@ -690,7 +729,7 @@ export default function RecurringExpenses() {
                               <CreditCard className="h-5 w-5 text-warning" />
                             </div>
                             <div className="flex-1 min-w-0">
-                              <h4 className="font-medium truncate">{tx.description || 'Sin descripción'}</h4>
+                              <h4 className="font-medium truncate">{baseName}</h4>
                               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                 <span>{tx.account?.name || 'Sin cuenta'}</span>
                                 {tx.category && (
@@ -703,14 +742,17 @@ export default function RecurringExpenses() {
                             </div>
                             <div className="text-right">
                               <CurrencyDisplay amount={Number(tx.amount)} currency={tx.currency} size="md" className="font-bold" />
-                              <p className="text-xs text-muted-foreground">total</p>
+                              <p className="text-xs text-muted-foreground">cuota {currentInstallment}</p>
                             </div>
-                            <div className="text-right min-w-[100px]">
-                              <Badge variant={paidCount >= totalCount ? 'default' : 'secondary'} className={paidCount >= totalCount ? 'bg-income/10 text-income' : ''}>
-                                {paidCount}/{totalCount} cuotas
+                            <div className="text-right min-w-[120px]">
+                              <Badge variant={isFullyPaid ? 'default' : 'secondary'} className={isFullyPaid ? 'bg-income/10 text-income' : ''}>
+                                Cuota {currentInstallment}/{total}
                               </Badge>
-                              <div className="mt-1.5 h-1.5 w-full bg-muted rounded-full overflow-hidden">
-                                <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${progress}%` }} />
+                              <div className="mt-1.5 flex items-center gap-2">
+                                <div className="h-1.5 flex-1 bg-muted rounded-full overflow-hidden">
+                                  <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${progress}%` }} />
+                                </div>
+                                <span className="text-xs text-muted-foreground">{paidCount}/{total}</span>
                               </div>
                             </div>
                           </div>
