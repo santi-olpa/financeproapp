@@ -1,13 +1,13 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { PageHeader } from '@/components/layout/PageHeader';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { CurrencyDisplay } from '@/components/ui/currency-display';
 import { supabase } from '@/integrations/supabase/client';
-import { Transaction, Category, RecurringExpense, Currency } from '@/types/finance';
-import { getCurrentPeriod, getMonthName } from '@/lib/format';
+import { Transaction, Category, RecurringExpense, Currency, Account } from '@/types/finance';
+import { getCurrentPeriod, getMonthName, formatCurrency } from '@/lib/format';
 import { CategoryPieChart } from '@/components/reports/CategoryPieChart';
 import { MonthlyTrendChart } from '@/components/reports/MonthlyTrendChart';
 import { RecurringCostsChart } from '@/components/reports/RecurringCostsChart';
@@ -79,6 +79,19 @@ export default function Reports() {
     },
   });
 
+  // Fetch accounts for Balance de Situación
+  const { data: accounts = [] } = useQuery({
+    queryKey: ['accounts'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('accounts')
+        .select('*')
+        .eq('is_active', true);
+      if (error) throw error;
+      return data as Account[];
+    },
+  });
+
   // Calculate totals for the month
   const { totalIncome, totalExpense } = useMemo(() => {
     const filtered = monthTransactions.filter(t => t.currency === currency);
@@ -94,16 +107,99 @@ export default function Reports() {
     return { totalIncome: income, totalExpense: expense };
   }, [monthTransactions, currency]);
 
-  // Calculate fixed costs
+  // Previous month totals for comparison
+  const prevMonthTotals = useMemo(() => {
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const prevYear = month === 1 ? year - 1 : year;
+    const filtered = yearTransactions.filter(t => {
+      const date = new Date(t.transaction_date);
+      return date.getMonth() + 1 === prevMonth && date.getFullYear() === prevYear && t.currency === currency;
+    });
+    const income = filtered.filter(t => t.transaction_type === 'income').reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    const expense = filtered.filter(t => t.transaction_type === 'expense').reduce((sum, t) => sum + Math.abs(t.amount), 0);
+    return { income, expense };
+  }, [yearTransactions, month, year, currency]);
+
+  const incomeChangePercent = prevMonthTotals.income > 0 
+    ? Math.round(((totalIncome - prevMonthTotals.income) / prevMonthTotals.income) * 100)
+    : null;
+
+  // Calculate fixed costs from recurring expenses
   const fixedCosts = useMemo(() => {
     return recurringExpenses
       .filter(e => e.is_active && e.currency === currency)
       .reduce((sum, e) => sum + Number(e.amount), 0);
   }, [recurringExpenses, currency]);
 
+  // Income breakdown by category (real data)
+  const incomeByCat = useMemo(() => {
+    const filtered = monthTransactions.filter(t => t.transaction_type === 'income' && t.currency === currency);
+    const grouped: Record<string, { name: string; total: number }> = {};
+    filtered.forEach(t => {
+      const catId = t.category_id || 'none';
+      const catName = t.category?.name || 'Sin categoría';
+      if (!grouped[catId]) grouped[catId] = { name: catName, total: 0 };
+      grouped[catId].total += Math.abs(t.amount);
+    });
+    return Object.values(grouped).sort((a, b) => b.total - a.total);
+  }, [monthTransactions, currency]);
+
+  // Expense breakdown by category (real data)
+  const expenseByCat = useMemo(() => {
+    const filtered = monthTransactions.filter(t => t.transaction_type === 'expense' && t.currency === currency);
+    const grouped: Record<string, { name: string; total: number; color: string }> = {};
+    filtered.forEach(t => {
+      const catId = t.category_id || 'none';
+      const catName = t.category?.name || 'Sin categoría';
+      const catColor = t.category?.color || '#6b7280';
+      if (!grouped[catId]) grouped[catId] = { name: catName, total: 0, color: catColor };
+      grouped[catId].total += Math.abs(t.amount);
+    });
+    return Object.values(grouped).sort((a, b) => b.total - a.total);
+  }, [monthTransactions, currency]);
+
+  // Recurring expenses breakdown by category
+  const recurringByCat = useMemo(() => {
+    const filtered = recurringExpenses.filter(e => e.is_active && e.currency === currency);
+    const grouped: Record<string, { name: string; total: number }> = {};
+    filtered.forEach(e => {
+      const catName = e.category?.name || 'Sin categoría';
+      const catId = e.category_id || 'none';
+      if (!grouped[catId]) grouped[catId] = { name: catName, total: 0 };
+      grouped[catId].total += Number(e.amount);
+    });
+    return Object.values(grouped).sort((a, b) => b.total - a.total);
+  }, [recurringExpenses, currency]);
+
+  // Net savings trend (last 6 months) from yearTransactions
+  const savingsTrend = useMemo(() => {
+    const months: { name: string; net: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      let m = month - i;
+      let y = year;
+      while (m <= 0) { m += 12; y -= 1; }
+      const filtered = yearTransactions.filter(t => {
+        const d = new Date(t.transaction_date);
+        return d.getMonth() + 1 === m && d.getFullYear() === y && t.currency === currency;
+      });
+      const inc = filtered.filter(t => t.transaction_type === 'income').reduce((s, t) => s + Math.abs(t.amount), 0);
+      const exp = filtered.filter(t => t.transaction_type === 'expense').reduce((s, t) => s + Math.abs(t.amount), 0);
+      months.push({ name: getMonthName(m).slice(0, 3), net: inc - exp });
+    }
+    return months;
+  }, [yearTransactions, month, year, currency]);
+
+  const maxTrendValue = Math.max(...savingsTrend.map(m => Math.abs(m.net)), 1);
+
   const netSavings = totalIncome - totalExpense;
-  const savingsGoal = 200000; // Example goal
-  const savingsProgress = Math.min((netSavings / savingsGoal) * 100, 100);
+
+  // Balance de Situación: real account totals
+  const totalPatrimonioARS = accounts
+    .filter(a => a.currency === 'ARS')
+    .reduce((sum, a) => sum + Number(a.current_balance), 0);
+  const totalPatrimonioUSD = accounts
+    .filter(a => a.currency === 'USD')
+    .reduce((sum, a) => sum + Number(a.current_balance), 0);
 
   const isLoading = loadingYear || loadingRecurring;
 
@@ -123,7 +219,6 @@ export default function Reports() {
     return (
       <div className="min-h-screen bg-background pb-24">
         <div className="p-4 space-y-6">
-          {/* Period and Currency Selector */}
           <div className="flex flex-col gap-3">
             <PeriodSelector
               month={month}
@@ -131,7 +226,6 @@ export default function Reports() {
               onMonthChange={setMonth}
               onYearChange={setYear}
             />
-            
             <Tabs value={currency} onValueChange={(v) => setCurrency(v as Currency)} className="w-full">
               <TabsList className="w-full">
                 <TabsTrigger value="ARS" className="flex-1">ARS</TabsTrigger>
@@ -140,14 +234,12 @@ export default function Reports() {
             </Tabs>
           </div>
 
-          {/* Summary Cards */}
           <SummaryCards 
             totalIncome={totalIncome}
             totalExpense={totalExpense}
             currency={currency}
           />
 
-          {/* Tabs for different views */}
           <Tabs defaultValue="categories" className="w-full">
             <TabsList className="w-full">
               <TabsTrigger value="categories" className="flex-1">Categorías</TabsTrigger>
@@ -163,7 +255,6 @@ export default function Reports() {
                 currency={currency}
                 title="Gastos por Categoría"
               />
-              
               <CategoryPieChart
                 transactions={monthTransactions}
                 categories={categories}
@@ -188,12 +279,29 @@ export default function Reports() {
               />
             </TabsContent>
           </Tabs>
+
+          {/* Balance de Situación Mobile */}
+          <Card>
+            <CardContent className="p-4 space-y-3">
+              <h3 className="font-semibold">Balance de Situación</h3>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-muted-foreground">Patrimonio ARS</span>
+                <span className="font-bold"><CurrencyDisplay amount={totalPatrimonioARS} currency="ARS" size="md" enablePrivacy /></span>
+              </div>
+              {totalPatrimonioUSD > 0 && (
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Patrimonio USD</span>
+                  <span className="font-bold"><CurrencyDisplay amount={totalPatrimonioUSD} currency="USD" size="md" enablePrivacy /></span>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </div>
       </div>
     );
   }
 
-  // Desktop Layout - 3 column grid like HTML template
+  // Desktop Layout
   return (
     <div className="min-h-screen bg-background pb-8">
       <PageHeader 
@@ -202,21 +310,28 @@ export default function Reports() {
         action={
           <div className="flex items-center gap-2 bg-card p-1 rounded-full border border-border">
             <button 
-              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${month === currentPeriod.month ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${month === currentPeriod.month && year === currentPeriod.year ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
               onClick={() => { setMonth(currentPeriod.month); setYear(currentPeriod.year); }}
             >
               {getMonthName(currentPeriod.month)}
             </button>
             <button 
-              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${month === currentPeriod.month - 1 ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-              onClick={() => setMonth(currentPeriod.month - 1 || 12)}
+              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${month === (currentPeriod.month - 1 || 12) ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              onClick={() => {
+                const pm = currentPeriod.month - 1 || 12;
+                const py = currentPeriod.month === 1 ? currentPeriod.year - 1 : currentPeriod.year;
+                setMonth(pm); setYear(py);
+              }}
             >
               {getMonthName(currentPeriod.month - 1 || 12)}
             </button>
             <div className="w-px h-4 bg-border mx-1" />
-            <button className="px-4 py-1.5 rounded-full text-sm font-medium text-muted-foreground hover:text-foreground">
-              Anual
-            </button>
+            <Tabs value={currency} onValueChange={(v) => setCurrency(v as Currency)}>
+              <TabsList className="h-auto p-0 bg-transparent">
+                <TabsTrigger value="ARS" className="px-3 py-1.5 text-sm rounded-full">ARS</TabsTrigger>
+                <TabsTrigger value="USD" className="px-3 py-1.5 text-sm rounded-full">USD</TabsTrigger>
+              </TabsList>
+            </Tabs>
           </div>
         }
       />
@@ -234,29 +349,32 @@ export default function Reports() {
                 </div>
                 <div className="space-y-1 mb-4">
                   <span className="text-2xl font-extrabold text-income">
-                    + <CurrencyDisplay amount={totalIncome} currency={currency} size="xl" className="inline" />
+                    + <CurrencyDisplay amount={totalIncome} currency={currency} size="xl" className="inline" enablePrivacy />
                   </span>
-                  <p className="text-sm text-muted-foreground flex items-center gap-1">
-                    <TrendingUp className="h-3 w-3" /> 12% vs. mes anterior
-                  </p>
+                  {incomeChangePercent !== null && (
+                    <p className="text-sm text-muted-foreground flex items-center gap-1">
+                      {incomeChangePercent >= 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                      {incomeChangePercent >= 0 ? '+' : ''}{incomeChangePercent}% vs. mes anterior
+                    </p>
+                  )}
                 </div>
                 
-                {/* Progress bars */}
                 <div className="space-y-3 mt-6">
-                  <div>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span>Freelance / Olpa</span>
-                      <span>75%</span>
-                    </div>
-                    <Progress value={75} className="h-2" />
-                  </div>
-                  <div>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span>Otros</span>
-                      <span>25%</span>
-                    </div>
-                    <Progress value={25} className="h-2 [&>div]:bg-muted-foreground" />
-                  </div>
+                  {incomeByCat.slice(0, 4).map((cat) => {
+                    const pct = totalIncome > 0 ? Math.round((cat.total / totalIncome) * 100) : 0;
+                    return (
+                      <div key={cat.name}>
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className="truncate max-w-[150px]">{cat.name}</span>
+                          <span>{pct}%</span>
+                        </div>
+                        <Progress value={pct} className="h-2" />
+                      </div>
+                    );
+                  })}
+                  {incomeByCat.length === 0 && (
+                    <p className="text-sm text-muted-foreground">Sin ingresos este mes</p>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -270,27 +388,25 @@ export default function Reports() {
                 </div>
                 <div className="space-y-1 mb-4">
                   <span className="text-2xl font-extrabold">
-                    <CurrencyDisplay amount={fixedCosts} currency={currency} size="xl" className="inline" />
+                    <CurrencyDisplay amount={fixedCosts} currency={currency} size="xl" className="inline" enablePrivacy />
                   </span>
                   <p className="text-sm text-muted-foreground">
                     {totalIncome > 0 ? Math.round((fixedCosts / totalIncome) * 100) : 0}% de tus ingresos
                   </p>
                 </div>
                 
-                {/* Table */}
                 <div className="mt-6 space-y-2">
-                  <div className="flex justify-between text-sm py-2 border-t border-border">
-                    <span>Alquiler</span>
-                    <span className="font-medium">$ 120.000</span>
-                  </div>
-                  <div className="flex justify-between text-sm py-2 border-t border-border">
-                    <span>Servicios</span>
-                    <span className="font-medium">$ 56.000</span>
-                  </div>
-                  <div className="flex justify-between text-sm py-2 border-t border-border">
-                    <span>Suscripciones</span>
-                    <span className="font-medium">$ 19.400</span>
-                  </div>
+                  {recurringByCat.slice(0, 5).map((cat) => (
+                    <div key={cat.name} className="flex justify-between text-sm py-2 border-t border-border">
+                      <span className="truncate max-w-[150px]">{cat.name}</span>
+                      <span className="font-medium">
+                        <CurrencyDisplay amount={cat.total} currency={currency} size="sm" className="inline" />
+                      </span>
+                    </div>
+                  ))}
+                  {recurringByCat.length === 0 && (
+                    <p className="text-sm text-muted-foreground">Sin gastos recurrentes</p>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -303,70 +419,62 @@ export default function Reports() {
                   <Target className="h-5 w-5 text-primary" />
                 </div>
                 <div className="space-y-1 mb-4">
-                  <span className="text-2xl font-extrabold">
-                    <CurrencyDisplay amount={netSavings} currency={currency} size="xl" className="inline" />
+                  <span className={`text-2xl font-extrabold ${netSavings >= 0 ? 'text-income' : 'text-destructive'}`}>
+                    <CurrencyDisplay amount={netSavings} currency={currency} size="xl" className="inline" enablePrivacy />
                   </span>
                   <p className="text-sm text-muted-foreground">
-                    Meta: <CurrencyDisplay amount={savingsGoal} currency={currency} size="sm" className="inline" />
+                    {totalIncome > 0 ? Math.round((netSavings / totalIncome) * 100) : 0}% de tasa de ahorro
                   </p>
                 </div>
                 
                 <div className="mt-8">
                   <div className="flex justify-between text-sm mb-2">
-                    <span>Progreso de Meta</span>
-                    <span>{Math.round(savingsProgress)}%</span>
+                    <span>Tasa de Ahorro</span>
+                    <span>{totalIncome > 0 ? Math.round((netSavings / totalIncome) * 100) : 0}%</span>
                   </div>
-                  <Progress value={savingsProgress} className="h-3" />
+                  <Progress value={Math.max(0, totalIncome > 0 ? (netSavings / totalIncome) * 100 : 0)} className="h-3" />
                 </div>
               </CardContent>
             </Card>
           </div>
 
-          {/* Second Row - Wide charts */}
+          {/* Second Row */}
           <div className="grid grid-cols-3 gap-6">
             {/* Desglose de Egresos - 2 columns */}
             <Card className="col-span-2 glass border-border/50">
               <CardContent className="p-6">
                 <div className="flex justify-between items-start mb-6">
                   <h3 className="font-semibold">Desglose de Egresos</h3>
-                  <select className="text-sm bg-transparent border border-border rounded px-2 py-1 text-muted-foreground">
-                    <option>Por Categoría</option>
-                    <option>Por Cuenta</option>
-                  </select>
                 </div>
                 
-              <div className="grid grid-cols-2 gap-8">
-                <CategoryPieChart
-                  transactions={monthTransactions}
-                  categories={categories}
-                  type="expense"
-                  currency={currency}
-                  title=""
-                />
-                
-                {/* Category table */}
-                <div className="space-y-3">
-                  <div className="grid grid-cols-2 text-sm text-muted-foreground font-medium pb-2 border-b border-border">
-                    <span>Categoría</span>
+                <div className="grid grid-cols-2 gap-8">
+                  <CategoryPieChart
+                    transactions={monthTransactions}
+                    categories={categories}
+                    type="expense"
+                    currency={currency}
+                    title=""
+                  />
+                  
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 text-sm text-muted-foreground font-medium pb-2 border-b border-border">
+                      <span>Categoría</span>
                       <span className="text-right">Monto</span>
                     </div>
-                    {categories.slice(0, 5).map((cat, i) => {
-                      const catExpenses = monthTransactions
-                        .filter(t => t.transaction_type === 'expense' && t.category_id === cat.id && t.currency === currency)
-                        .reduce((sum, t) => sum + Number(t.amount), 0);
-                      if (catExpenses === 0) return null;
-                      return (
-                        <div key={cat.id} className="flex justify-between items-center text-sm py-2 border-b border-border/50">
-                          <span className="flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: cat.color || '#6366f1' }} />
-                            {cat.name}
-                          </span>
-                          <span className="font-medium">
-                            <CurrencyDisplay amount={catExpenses} currency={currency} size="sm" className="inline" />
-                          </span>
-                        </div>
-                      );
-                    })}
+                    {expenseByCat.map((cat) => (
+                      <div key={cat.name} className="flex justify-between items-center text-sm py-2 border-b border-border/50">
+                        <span className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: cat.color }} />
+                          <span className="truncate max-w-[150px]">{cat.name}</span>
+                        </span>
+                        <span className="font-medium">
+                          <CurrencyDisplay amount={cat.total} currency={currency} size="sm" className="inline" />
+                        </span>
+                      </div>
+                    ))}
+                    {expenseByCat.length === 0 && (
+                      <p className="text-sm text-muted-foreground py-4">Sin gastos este mes</p>
+                    )}
                   </div>
                 </div>
               </CardContent>
@@ -381,19 +489,20 @@ export default function Reports() {
                 </div>
                 <p className="text-sm text-muted-foreground mb-4">Evolución de Ahorro Neto</p>
                 
-                {/* Simple bar chart */}
                 <div className="flex items-end gap-2 h-32 mt-6">
-                  {[30, 50, 45, 60, 80, 70].map((height, i) => (
-                    <div key={i} className="flex-1 flex flex-col items-center gap-2">
-                      <div 
-                        className={`w-full rounded-t ${i === 5 ? 'bg-primary' : 'bg-primary/20'}`}
-                        style={{ height: `${height}%` }}
-                      />
-                      <span className="text-xs text-muted-foreground">
-                        {['Ago', 'Sep', 'Oct', 'Nov', 'Dic', 'Ene'][i]}
-                      </span>
-                    </div>
-                  ))}
+                  {savingsTrend.map((m, i) => {
+                    const height = maxTrendValue > 0 ? Math.max(5, (Math.abs(m.net) / maxTrendValue) * 100) : 5;
+                    const isLast = i === savingsTrend.length - 1;
+                    return (
+                      <div key={i} className="flex-1 flex flex-col items-center gap-2">
+                        <div 
+                          className={`w-full rounded-t ${m.net >= 0 ? (isLast ? 'bg-primary' : 'bg-primary/20') : 'bg-destructive/40'}`}
+                          style={{ height: `${height}%` }}
+                        />
+                        <span className="text-xs text-muted-foreground">{m.name}</span>
+                      </div>
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>
@@ -404,18 +513,22 @@ export default function Reports() {
             <CardContent className="p-6">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="font-semibold">Balance de Situación</h3>
-                <span className="text-sm text-income">Cierre de mes proyectado</span>
+                <span className="text-sm text-muted-foreground">Basado en saldos actuales de cuentas</span>
               </div>
               
               <div className="flex items-center justify-between">
                 <div className="flex-1">
                   <span className="text-sm text-muted-foreground">Patrimonio en ARS</span>
-                  <h2 className="text-3xl font-extrabold mt-1">$ 1.723.600,06</h2>
+                  <h2 className="text-3xl font-extrabold mt-1">
+                    <CurrencyDisplay amount={totalPatrimonioARS} currency="ARS" size="xl" enablePrivacy />
+                  </h2>
                 </div>
                 <div className="w-px h-12 bg-border mx-8" />
                 <div className="flex-1 pl-8">
-                  <span className="text-sm text-muted-foreground">Equivalente en USD (MEP)</span>
-                  <h2 className="text-3xl font-extrabold text-income mt-1">US$ 1.436,33</h2>
+                  <span className="text-sm text-muted-foreground">Patrimonio en USD</span>
+                  <h2 className="text-3xl font-extrabold text-income mt-1">
+                    <CurrencyDisplay amount={totalPatrimonioUSD} currency="USD" size="xl" enablePrivacy />
+                  </h2>
                 </div>
               </div>
             </CardContent>
