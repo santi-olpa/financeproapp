@@ -354,6 +354,39 @@ export default function RecurringExpenses() {
                 </CardContent>
               </Card>
 
+              {/* Category breakdown */}
+              {Object.keys(expensesByCategory).length > 0 && (
+                <Card className="glass border-border/50">
+                  <CardContent className="p-4">
+                    <h4 className="text-sm font-semibold mb-3">Gasto por Categoría</h4>
+                    <div className="space-y-2">
+                      {Object.entries(expensesByCategory)
+                        .sort(([, a], [, b]) => b.total - a.total)
+                        .map(([catName, { total, color }]) => {
+                          const pct = totalMonthlyExpenses > 0 ? Math.round((total / totalMonthlyExpenses) * 100) : 0;
+                          return (
+                            <div key={catName}>
+                              <div className="flex justify-between text-sm mb-1">
+                                <span className="flex items-center gap-2">
+                                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+                                  <span className="truncate max-w-[140px]">{catName}</span>
+                                </span>
+                                <span className="text-muted-foreground">{pct}%</span>
+                              </div>
+                              <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                                <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
+                              </div>
+                              <p className="text-xs text-muted-foreground text-right mt-0.5">
+                                <CurrencyDisplay amount={total} currency="ARS" size="sm" />
+                              </p>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               <div className="space-y-2">
                 {monthlyTransactions?.length === 0 ? (
                   <EmptyState icon={TrendingDown} title="Sin gastos" description="No hay gastos registrados este mes" />

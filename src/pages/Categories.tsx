@@ -17,7 +17,8 @@ import {
   TrendingDown,
   Tag,
   Check,
-  X
+  ChevronRight,
+  CornerDownRight
 } from 'lucide-react';
 import {
   Dialog,
@@ -68,6 +69,7 @@ export default function Categories() {
   const [name, setName] = useState('');
   const [color, setColor] = useState(COLORS[0]);
   const [categoryType, setCategoryType] = useState<CategoryType>('expense');
+  const [parentId, setParentId] = useState<string>('');
 
   const { data: categories, isLoading } = useQuery({
     queryKey: ['categories'],
@@ -90,6 +92,7 @@ export default function Categories() {
         color,
         category_type: categoryType,
         is_system: false,
+        parent_id: parentId || null,
       });
       if (error) throw error;
     },
@@ -108,7 +111,7 @@ export default function Categories() {
       if (!editingCategory) return;
       const { error } = await supabase
         .from('categories')
-        .update({ name, color })
+        .update({ name, color, parent_id: parentId || null })
         .eq('id', editingCategory.id);
       if (error) throw error;
     },
@@ -136,11 +139,12 @@ export default function Categories() {
     },
   });
 
-  const openCreateDialog = () => {
+  const openCreateDialog = (asSubcategoryOf?: string) => {
     setEditingCategory(null);
     setName('');
     setColor(COLORS[0]);
     setCategoryType(activeTab);
+    setParentId(asSubcategoryOf || '');
     setDialogOpen(true);
   };
 
@@ -149,6 +153,7 @@ export default function Categories() {
     setName(category.name);
     setColor(category.color || COLORS[0]);
     setCategoryType(category.category_type);
+    setParentId(category.parent_id || '');
     setDialogOpen(true);
   };
 
@@ -156,6 +161,7 @@ export default function Categories() {
     setDialogOpen(false);
     setEditingCategory(null);
     setName('');
+    setParentId('');
   };
 
   const handleSubmit = () => {
@@ -170,8 +176,18 @@ export default function Categories() {
     }
   };
 
-  const expenseCategories = categories?.filter(c => c.category_type === 'expense') || [];
-  const incomeCategories = categories?.filter(c => c.category_type === 'income') || [];
+  const allOfType = (type: CategoryType) => categories?.filter(c => c.category_type === type) || [];
+  const parentCategories = (type: CategoryType) => allOfType(type).filter(c => !c.parent_id);
+  const childCategories = (parentIdVal: string) => categories?.filter(c => c.parent_id === parentIdVal) || [];
+
+  const expenseParents = parentCategories('expense');
+  const incomeParents = parentCategories('income');
+
+  // Available parents for the select (exclude self and own children)
+  const availableParents = allOfType(editingCategory?.category_type || categoryType).filter(c => {
+    if (!c.parent_id && c.id !== editingCategory?.id) return true;
+    return false;
+  });
 
   if (isLoading) {
     return (
@@ -181,50 +197,91 @@ export default function Categories() {
     );
   }
 
-  const renderCategoryList = (categoryList: Category[]) => (
+  const renderCategoryList = (parents: Category[]) => (
     <div className="grid gap-2">
-      {categoryList.map((category) => (
-        <Card 
-          key={category.id} 
-          className="glass border-border/50"
-          style={{ borderLeftColor: category.color || '#6366f1', borderLeftWidth: '3px' }}
-        >
-          <CardContent className="p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div 
-                className="w-3 h-3 rounded-full"
-                style={{ backgroundColor: category.color || '#6366f1' }}
-              />
-              <span className="font-medium text-foreground">{category.name}</span>
-              {category.is_system && (
-                <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
-                  Sistema
-                </span>
-              )}
-            </div>
-            
-            {!category.is_system && (
-              <div className="flex gap-1">
-                <Button 
-                  variant="ghost" 
-                  size="icon"
-                  onClick={() => openEditDialog(category)}
-                >
-                  <Pencil className="h-4 w-4" />
-                </Button>
-                <Button 
-                  variant="ghost" 
-                  size="icon"
-                  onClick={() => setDeleteId(category.id)}
-                  className="text-destructive hover:text-destructive"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+      {parents.map((category) => {
+        const children = childCategories(category.id);
+        return (
+          <div key={category.id}>
+            <Card 
+              className="glass border-border/50"
+              style={{ borderLeftColor: category.color || '#6366f1', borderLeftWidth: '3px' }}
+            >
+              <CardContent className="p-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div 
+                    className="w-3 h-3 rounded-full"
+                    style={{ backgroundColor: category.color || '#6366f1' }}
+                  />
+                  <span className="font-medium text-foreground">{category.name}</span>
+                  {category.is_system && (
+                    <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">
+                      Sistema
+                    </span>
+                  )}
+                  {children.length > 0 && (
+                    <span className="text-xs text-muted-foreground">
+                      ({children.length} sub)
+                    </span>
+                  )}
+                </div>
+                
+                <div className="flex gap-1">
+                  <Button 
+                    variant="ghost" 
+                    size="icon"
+                    title="Agregar subcategoría"
+                    onClick={() => openCreateDialog(category.id)}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                  {!category.is_system && (
+                    <>
+                      <Button variant="ghost" size="icon" onClick={() => openEditDialog(category)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => setDeleteId(category.id)} className="text-destructive hover:text-destructive">
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Subcategories */}
+            {children.length > 0 && (
+              <div className="ml-6 mt-1 space-y-1">
+                {children.map((child) => (
+                  <Card 
+                    key={child.id}
+                    className="glass border-border/50"
+                    style={{ borderLeftColor: child.color || category.color || '#6366f1', borderLeftWidth: '2px' }}
+                  >
+                    <CardContent className="p-3 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <CornerDownRight className="h-3 w-3 text-muted-foreground" />
+                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: child.color || '#6366f1' }} />
+                        <span className="text-sm text-foreground">{child.name}</span>
+                      </div>
+                      {!child.is_system && (
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditDialog(child)}>
+                            <Pencil className="h-3 w-3" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => setDeleteId(child.id)}>
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
               </div>
             )}
-          </CardContent>
-        </Card>
-      ))}
+          </div>
+        );
+      })}
     </div>
   );
 
@@ -234,7 +291,7 @@ export default function Categories() {
         title="Categorías" 
         subtitle="Organiza tus movimientos"
         action={
-          <Button size="icon" className="rounded-full" onClick={openCreateDialog}>
+          <Button size="icon" className="rounded-full" onClick={() => openCreateDialog()}>
             <Plus className="h-5 w-5" />
           </Button>
         }
@@ -245,33 +302,33 @@ export default function Categories() {
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="expense" className="flex items-center gap-2">
               <TrendingDown className="h-4 w-4" />
-              Egresos ({expenseCategories.length})
+              Egresos ({allOfType('expense').length})
             </TabsTrigger>
             <TabsTrigger value="income" className="flex items-center gap-2">
               <TrendingUp className="h-4 w-4" />
-              Ingresos ({incomeCategories.length})
+              Ingresos ({allOfType('income').length})
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="expense" className="mt-4">
-            {expenseCategories.length === 0 ? (
+            {expenseParents.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <Tag className="h-12 w-12 mx-auto mb-3 opacity-50" />
                 <p>No hay categorías de egreso</p>
               </div>
             ) : (
-              renderCategoryList(expenseCategories)
+              renderCategoryList(expenseParents)
             )}
           </TabsContent>
 
           <TabsContent value="income" className="mt-4">
-            {incomeCategories.length === 0 ? (
+            {incomeParents.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <Tag className="h-12 w-12 mx-auto mb-3 opacity-50" />
                 <p>No hay categorías de ingreso</p>
               </div>
             ) : (
-              renderCategoryList(incomeCategories)
+              renderCategoryList(incomeParents)
             )}
           </TabsContent>
         </Tabs>
@@ -282,7 +339,7 @@ export default function Categories() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {editingCategory ? 'Editar categoría' : 'Nueva categoría'}
+              {editingCategory ? 'Editar categoría' : parentId ? 'Nueva subcategoría' : 'Nueva categoría'}
             </DialogTitle>
           </DialogHeader>
           
@@ -296,19 +353,39 @@ export default function Categories() {
               />
             </div>
 
-            {!editingCategory && (
+            {!editingCategory && !parentId && (
               <div className="space-y-2">
                 <Label>Tipo</Label>
                 <Select value={categoryType} onValueChange={(v) => setCategoryType(v as CategoryType)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="expense">Egreso</SelectItem>
                     <SelectItem value="income">Ingreso</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+            )}
+
+            {/* Parent category selector (for non-subcreation) */}
+            {!parentId && (
+              <div className="space-y-2">
+                <Label>Categoría padre (opcional)</Label>
+                <Select value={parentId} onValueChange={setParentId}>
+                  <SelectTrigger><SelectValue placeholder="Ninguna (categoría raíz)" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Ninguna (categoría raíz)</SelectItem>
+                    {availableParents.map(p => (
+                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {parentId && !editingCategory && (
+              <p className="text-sm text-muted-foreground">
+                Subcategoría de: <strong>{categories?.find(c => c.id === parentId)?.name}</strong>
+              </p>
             )}
 
             <div className="space-y-2">
@@ -330,9 +407,7 @@ export default function Categories() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={closeDialog}>
-              Cancelar
-            </Button>
+            <Button variant="outline" onClick={closeDialog}>Cancelar</Button>
             <Button 
               onClick={handleSubmit}
               disabled={createMutation.isPending || updateMutation.isPending}
@@ -353,6 +428,7 @@ export default function Categories() {
             <AlertDialogTitle>¿Eliminar categoría?</AlertDialogTitle>
             <AlertDialogDescription>
               Esta acción no se puede deshacer. Los movimientos asociados quedarán sin categoría.
+              {childCategories(deleteId || '').length > 0 && ' Las subcategorías también quedarán huérfanas.'}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
