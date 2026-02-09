@@ -139,6 +139,41 @@ export default function RecurringExpenses() {
     enabled: !!user,
   });
 
+  // Fetch installment transactions (pagos en cuotas)
+  const { data: installmentTransactions } = useQuery({
+    queryKey: ['transactions', 'installments'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('transactions')
+        .select(`*, category:categories(*), account:accounts!transactions_account_id_fkey(name, color)`)
+        .eq('transaction_type', 'expense')
+        .eq('has_installments', true)
+        .order('transaction_date', { ascending: false });
+      
+      if (error) throw error;
+      return data as unknown as (Transaction & { account: { name: string; color: string } | null })[];
+    },
+    enabled: !!user,
+  });
+
+  // Fetch installments for those transactions
+  const { data: installments } = useQuery({
+    queryKey: ['installments', installmentTransactions?.map(t => t.id)],
+    queryFn: async () => {
+      if (!installmentTransactions?.length) return [];
+      const ids = installmentTransactions.map(t => t.id);
+      const { data, error } = await supabase
+        .from('installments')
+        .select('*')
+        .in('transaction_id', ids)
+        .order('installment_number', { ascending: true });
+      
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!user && !!installmentTransactions?.length,
+  });
+
   // Mutations
   const saveMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
@@ -282,10 +317,11 @@ export default function RecurringExpenses() {
     return (
       <div className="min-h-screen bg-background">
         <div className="p-4">
-          <Tabs defaultValue="monthly" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 mb-4">
-              <TabsTrigger value="monthly">Gastos del Mes</TabsTrigger>
+        <Tabs defaultValue="monthly" className="w-full">
+            <TabsList className="grid w-full grid-cols-3 mb-4">
+              <TabsTrigger value="monthly">Gastos</TabsTrigger>
               <TabsTrigger value="recurring">Recurrentes</TabsTrigger>
+              <TabsTrigger value="cards">Cuotas</TabsTrigger>
             </TabsList>
 
             <TabsContent value="monthly" className="space-y-4">
@@ -391,6 +427,40 @@ export default function RecurringExpenses() {
                     </Card>
                   ))}
                 </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="cards" className="space-y-3">
+              {(!installmentTransactions || installmentTransactions.length === 0) ? (
+                <EmptyState icon={CreditCard} title="Sin cuotas" description="Los egresos en cuotas se mostrarán aquí" />
+              ) : (
+                installmentTransactions.map((tx) => {
+                  const txInstallments = installments?.filter(i => i.transaction_id === tx.id) || [];
+                  const paidCount = txInstallments.filter(i => i.is_paid).length;
+                  const totalCount = tx.total_installments || txInstallments.length;
+                  const progress = totalCount > 0 ? Math.round((paidCount / totalCount) * 100) : 0;
+                  
+                  return (
+                    <Card key={tx.id} className="glass border-border/50" onClick={() => navigate(`/transactions/${tx.id}`)}>
+                      <CardContent className="p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <CreditCard className="h-4 w-4 text-warning" />
+                            <span className="font-medium text-sm truncate">{tx.description || 'Sin descripción'}</span>
+                          </div>
+                          <Badge variant="secondary" className="text-xs">{paidCount}/{totalCount}</Badge>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
+                          <span>{tx.account?.name || 'Sin cuenta'}</span>
+                          <CurrencyDisplay amount={Number(tx.amount)} currency={tx.currency} size="sm" className="font-semibold text-foreground" />
+                        </div>
+                        <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                          <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${progress}%` }} />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })
               )}
             </TabsContent>
           </Tabs>
@@ -569,7 +639,54 @@ export default function RecurringExpenses() {
             </TabsContent>
 
             <TabsContent value="cards" className="space-y-4">
-              <EmptyState icon={CreditCard} title="Sin cuotas pendientes" description="Las cuotas de tarjetas se mostrarán aquí" />
+              {(!installmentTransactions || installmentTransactions.length === 0) ? (
+                <EmptyState icon={CreditCard} title="Sin cuotas pendientes" description="Los egresos marcados como pago en cuotas se mostrarán aquí" />
+              ) : (
+                <div className="space-y-3">
+                  {installmentTransactions.map((tx) => {
+                    const txInstallments = installments?.filter(i => i.transaction_id === tx.id) || [];
+                    const paidCount = txInstallments.filter(i => i.is_paid).length;
+                    const totalCount = tx.total_installments || txInstallments.length;
+                    const progress = totalCount > 0 ? Math.round((paidCount / totalCount) * 100) : 0;
+                    
+                    return (
+                      <Card key={tx.id} className="glass border-border/50 hover:border-primary/50 transition-colors cursor-pointer" onClick={() => navigate(`/transactions/${tx.id}`)}>
+                        <CardContent className="p-4">
+                          <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 rounded-xl bg-warning/10 flex items-center justify-center">
+                              <CreditCard className="h-5 w-5 text-warning" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-medium truncate">{tx.description || 'Sin descripción'}</h4>
+                              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <span>{tx.account?.name || 'Sin cuenta'}</span>
+                                {tx.category && (
+                                  <>
+                                    <span>•</span>
+                                    <span>{tx.category.name}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <CurrencyDisplay amount={Number(tx.amount)} currency={tx.currency} size="md" className="font-bold" />
+                              <p className="text-xs text-muted-foreground">total</p>
+                            </div>
+                            <div className="text-right min-w-[100px]">
+                              <Badge variant={paidCount >= totalCount ? 'default' : 'secondary'} className={paidCount >= totalCount ? 'bg-income/10 text-income' : ''}>
+                                {paidCount}/{totalCount} cuotas
+                              </Badge>
+                              <div className="mt-1.5 h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                                <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${progress}%` }} />
+                              </div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
             </TabsContent>
           </Tabs>
         </div>
