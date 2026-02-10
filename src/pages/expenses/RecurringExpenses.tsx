@@ -306,16 +306,18 @@ export default function RecurringExpenses() {
     return sum + (Number(expense.amount) * multiplier);
   }, 0) ?? 0;
 
-  const totalMonthlyExpenses = monthlyTransactions?.reduce((sum, tx) => sum + Number(tx.amount), 0) ?? 0;
-  const expensesByCategory = monthlyTransactions?.reduce((acc, tx) => {
+  // Filter by ARS only for the summary (consistent with Reports module)
+  const arsMonthlyTransactions = monthlyTransactions?.filter(tx => tx.currency === 'ARS') ?? [];
+  const totalMonthlyExpenses = arsMonthlyTransactions.reduce((sum, tx) => sum + Math.abs(Number(tx.amount)), 0);
+  const expensesByCategory = arsMonthlyTransactions.reduce((acc, tx) => {
     const categoryName = tx.category?.name || 'Sin categoría';
     if (!acc[categoryName]) acc[categoryName] = { total: 0, color: tx.category?.color || '#6b7280' };
-    acc[categoryName].total += Number(tx.amount);
+    acc[categoryName].total += Math.abs(Number(tx.amount));
     return acc;
-  }, {} as Record<string, { total: number; color: string }>) ?? {};
+  }, {} as Record<string, { total: number; color: string }>);
 
-  // Calculate cuotas total for selected month (sum of installment tx amounts in this month)
-  const cuotasTarjetasTotal = installmentTransactions?.reduce((sum, tx) => sum + Number(tx.amount), 0) ?? 0;
+  // Cuotas tarjetas: only installments that are part of the month's expenses (already included in totalMonthlyExpenses)
+  const cuotasTarjetasTotal = installmentTransactions?.filter(tx => tx.currency === 'ARS').reduce((sum, tx) => sum + Math.abs(Number(tx.amount)), 0) ?? 0;
 
   // Helper: get base purchase name by removing "(X/Y)" suffix
   const getBaseName = (desc: string | null) => {
@@ -596,14 +598,14 @@ export default function RecurringExpenses() {
               <CardContent className="p-4">
                 <p className="text-xs text-muted-foreground uppercase mb-1">Total Comprometido</p>
                 <h3 className="text-xl font-extrabold">
-                  <CurrencyDisplay amount={totalMonthlyExpenses + projectedRecurringTotal + cuotasTarjetasTotal} currency="ARS" size="xl" />
+                  <CurrencyDisplay amount={totalMonthlyExpenses + projectedRecurringTotal} currency="ARS" size="xl" />
                 </h3>
               </CardContent>
             </Card>
           </div>
 
           {/* Tabs */}
-          <Tabs defaultValue="recurring" className="w-full">
+          <Tabs defaultValue="history" className="w-full">
             <TabsList className="border-b border-border bg-transparent mb-6">
               <TabsTrigger value="history" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none">Historial del Mes</TabsTrigger>
               <TabsTrigger value="recurring" className="data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none">Gastos Recurrentes</TabsTrigger>
@@ -617,6 +619,37 @@ export default function RecurringExpenses() {
                   Nuevo Gasto
                 </Button>
               </div>
+
+              {/* Category breakdown desktop */}
+              {Object.keys(expensesByCategory).length > 0 && (
+                <Card className="glass border-border/50">
+                  <CardContent className="p-4">
+                    <h4 className="text-sm font-semibold mb-3">Gasto por Categoría — {getMonthName(month)} {year}</h4>
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                      {Object.entries(expensesByCategory)
+                        .sort(([, a], [, b]) => b.total - a.total)
+                        .map(([catName, { total, color }]) => {
+                          const pct = totalMonthlyExpenses > 0 ? Math.round((total / totalMonthlyExpenses) * 100) : 0;
+                          return (
+                            <div key={catName} className="p-3 rounded-lg bg-muted/30">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
+                                <span className="text-sm font-medium truncate">{catName}</span>
+                              </div>
+                              <p className="text-lg font-bold">
+                                <CurrencyDisplay amount={total} currency="ARS" size="md" />
+                              </p>
+                              <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden mt-1">
+                                <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-0.5">{pct}%</p>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
               
               <div className="space-y-2">
                 {monthlyTransactions?.map((tx) => (
