@@ -27,7 +27,8 @@ import {
   DollarSign,
   Play,
   Loader2,
-  CreditCard
+  CreditCard,
+  X
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -53,6 +54,7 @@ export default function RecurringExpenses() {
   const currentPeriod = getCurrentPeriod();
   const [month, setMonth] = useState(currentPeriod.month);
   const [year, setYear] = useState(currentPeriod.year);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -395,14 +397,26 @@ export default function RecurringExpenses() {
               {Object.keys(expensesByCategory).length > 0 && (
                 <Card className="glass border-border/50">
                   <CardContent className="p-4">
-                    <h4 className="text-sm font-semibold mb-3">Gasto por Categoría</h4>
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-sm font-semibold">Gasto por Categoría</h4>
+                      {selectedCategory && (
+                        <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setSelectedCategory(null)}>
+                          <X className="h-3 w-3 mr-1" /> Quitar filtro
+                        </Button>
+                      )}
+                    </div>
                     <div className="space-y-2">
                       {Object.entries(expensesByCategory)
                         .sort(([, a], [, b]) => b.total - a.total)
                         .map(([catName, { total, color }]) => {
                           const pct = totalMonthlyExpenses > 0 ? Math.round((total / totalMonthlyExpenses) * 100) : 0;
+                          const isSelected = selectedCategory === catName;
                           return (
-                            <div key={catName}>
+                            <button
+                              key={catName}
+                              className={`w-full text-left rounded-lg p-2 transition-colors ${isSelected ? 'bg-primary/10 ring-1 ring-primary/30' : 'hover:bg-muted/50'}`}
+                              onClick={() => setSelectedCategory(isSelected ? null : catName)}
+                            >
                               <div className="flex justify-between text-sm mb-1">
                                 <span className="flex items-center gap-2">
                                   <span className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
@@ -416,7 +430,7 @@ export default function RecurringExpenses() {
                               <p className="text-xs text-muted-foreground text-right mt-0.5">
                                 <CurrencyDisplay amount={total} currency="ARS" size="sm" />
                               </p>
-                            </div>
+                            </button>
                           );
                         })}
                     </div>
@@ -424,11 +438,24 @@ export default function RecurringExpenses() {
                 </Card>
               )}
 
+              {selectedCategory && (
+                <div className="flex items-center gap-2 py-2">
+                  <Badge variant="secondary" className="gap-1">
+                    Filtro: {selectedCategory}
+                    <button onClick={() => setSelectedCategory(null)}><X className="h-3 w-3" /></button>
+                  </Badge>
+                </div>
+              )}
+
               <div className="space-y-2">
-                {monthlyTransactions?.length === 0 ? (
-                  <EmptyState icon={TrendingDown} title="Sin gastos" description="No hay gastos registrados este mes" />
-                ) : (
-                  monthlyTransactions?.map((tx) => (
+                {(() => {
+                  const filtered = (monthlyTransactions ?? []).filter(tx => 
+                    !selectedCategory || (tx.category?.name || 'Sin categoría') === selectedCategory
+                  );
+                  return filtered.length === 0 ? (
+                    <EmptyState icon={TrendingDown} title="Sin gastos" description={selectedCategory ? `No hay gastos en "${selectedCategory}" este mes` : "No hay gastos registrados este mes"} />
+                  ) : (
+                    filtered.map((tx) => (
                     <Card key={tx.id} className="glass border-border/50">
                       <CardContent className="p-3 flex items-center justify-between">
                         <div className="flex items-center gap-3">
@@ -442,7 +469,8 @@ export default function RecurringExpenses() {
                       </CardContent>
                     </Card>
                   ))
-                )}
+                  );
+                })()}
               </div>
             </TabsContent>
 
@@ -624,14 +652,26 @@ export default function RecurringExpenses() {
               {Object.keys(expensesByCategory).length > 0 && (
                 <Card className="glass border-border/50">
                   <CardContent className="p-4">
-                    <h4 className="text-sm font-semibold mb-3">Gasto por Categoría — {getMonthName(month)} {year}</h4>
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-sm font-semibold">Gasto por Categoría — {getMonthName(month)} {year}</h4>
+                      {selectedCategory && (
+                        <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setSelectedCategory(null)}>
+                          <X className="h-3 w-3 mr-1" /> Quitar filtro
+                        </Button>
+                      )}
+                    </div>
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                       {Object.entries(expensesByCategory)
                         .sort(([, a], [, b]) => b.total - a.total)
                         .map(([catName, { total, color }]) => {
                           const pct = totalMonthlyExpenses > 0 ? Math.round((total / totalMonthlyExpenses) * 100) : 0;
+                          const isSelected = selectedCategory === catName;
                           return (
-                            <div key={catName} className="p-3 rounded-lg bg-muted/30">
+                            <button
+                              key={catName}
+                              className={`p-3 rounded-lg text-left transition-colors ${isSelected ? 'bg-primary/10 ring-1 ring-primary/30' : 'bg-muted/30 hover:bg-muted/50'}`}
+                              onClick={() => setSelectedCategory(isSelected ? null : catName)}
+                            >
                               <div className="flex items-center gap-2 mb-1">
                                 <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
                                 <span className="text-sm font-medium truncate">{catName}</span>
@@ -643,38 +683,54 @@ export default function RecurringExpenses() {
                                 <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />
                               </div>
                               <p className="text-xs text-muted-foreground mt-0.5">{pct}%</p>
-                            </div>
+                            </button>
                           );
                         })}
                     </div>
                   </CardContent>
                 </Card>
               )}
+
+              {selectedCategory && (
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary" className="gap-1 text-sm">
+                    Mostrando: {selectedCategory}
+                    <button onClick={() => setSelectedCategory(null)}><X className="h-3 w-3 ml-1" /></button>
+                  </Badge>
+                </div>
+              )}
               
               <div className="space-y-2">
-                {monthlyTransactions?.map((tx) => (
-                  <Card key={tx.id} className="glass border-border/50">
-                    <CardContent className="p-4">
-                      <div className="grid grid-cols-[45px_2fr_1fr_1fr_150px] items-center gap-4">
-                        <div className="w-9 h-9 rounded-xl bg-expense/10 flex items-center justify-center">
-                          <TrendingDown className="h-4 w-4 text-expense" />
+                {(() => {
+                  const filtered = (monthlyTransactions ?? []).filter(tx =>
+                    !selectedCategory || (tx.category?.name || 'Sin categoría') === selectedCategory
+                  );
+                  return filtered.length === 0 ? (
+                    <EmptyState icon={TrendingDown} title="Sin gastos" description={selectedCategory ? `No hay gastos en "${selectedCategory}" este mes` : "No hay gastos registrados este mes"} />
+                  ) : filtered.map((tx) => (
+                    <Card key={tx.id} className="glass border-border/50">
+                      <CardContent className="p-4">
+                        <div className="grid grid-cols-[45px_2fr_1fr_1fr_150px] items-center gap-4">
+                          <div className="w-9 h-9 rounded-xl bg-expense/10 flex items-center justify-center">
+                            <TrendingDown className="h-4 w-4 text-expense" />
+                          </div>
+                          <div>
+                            <h4 className="font-medium">{tx.description || 'Sin descripción'}</h4>
+                            <p className="text-sm text-muted-foreground">{tx.notes || ''}</p>
+                          </div>
+                          <Badge variant="secondary" className="w-fit">{tx.category?.name || 'Sin categoría'}</Badge>
+                          <div className="text-right font-bold">
+                            <CurrencyDisplay amount={Number(tx.amount)} currency={tx.currency} size="md" className="text-expense" />
+                          </div>
+                          <div className="flex items-center justify-end gap-2">
+                            <Button variant="ghost" size="icon" className="h-8 w-8"><Edit className="h-4 w-4" /></Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive"><Trash2 className="h-4 w-4" /></Button>
+                          </div>
                         </div>
-                        <div>
-                          <h4 className="font-medium">{tx.description || 'Sin descripción'}</h4>
-                          <p className="text-sm text-muted-foreground">{tx.notes || ''}</p>
-                        </div>
-                        <Badge variant="secondary" className="w-fit">{tx.category?.name || 'Sin categoría'}</Badge>
-                        <div className="text-right font-bold">
-                          <CurrencyDisplay amount={Number(tx.amount)} currency={tx.currency} size="md" className="text-expense" />
-                        </div>
-                        <div className="flex items-center justify-end gap-2">
-                          <Button variant="ghost" size="icon" className="h-8 w-8"><Edit className="h-4 w-4" /></Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive"><Trash2 className="h-4 w-4" /></Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                      </CardContent>
+                    </Card>
+                  ));
+                })()}
               </div>
             </TabsContent>
 
