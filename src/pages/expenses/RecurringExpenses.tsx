@@ -28,7 +28,8 @@ import {
   Play,
   Loader2,
   CreditCard,
-  X
+  X,
+  Wallet
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -134,7 +135,7 @@ export default function RecurringExpenses() {
       
       const { data, error } = await supabase
         .from('transactions')
-        .select(`*, category:categories(*)`)
+        .select(`*, category:categories(*), account:accounts!transactions_account_id_fkey(name, color, current_balance)`)
         .eq('transaction_type', 'expense')
         .gte('transaction_date', startDate)
         .lte('transaction_date', endDate)
