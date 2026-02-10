@@ -35,6 +35,17 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import type { RecurringExpense, Category, Account, Currency, RecurringFrequency, PriceHistoryEntry, Transaction } from '@/types/finance';
 import { FREQUENCY_LABELS, CURRENCY_SYMBOLS } from '@/types/finance';
 import { getMonthName, getCurrentPeriod } from '@/lib/format';
@@ -56,6 +67,28 @@ export default function RecurringExpenses() {
   const [month, setMonth] = useState(currentPeriod.month);
   const [year, setYear] = useState(currentPeriod.year);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+
+  // Delete transaction mutation
+  const deleteTransactionMutation = useMutation({
+    mutationFn: async (tx: Transaction) => {
+      // Revert account balance
+      if (tx.account_id && (tx as any).account) {
+        const account = (tx as any).account;
+        await supabase
+          .from('accounts')
+          .update({ current_balance: Number(account.current_balance) + Number(tx.amount) })
+          .eq('id', tx.account_id);
+      }
+      const { error } = await supabase.from('transactions').delete().eq('id', tx.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['accounts'] });
+      toast.success('Movimiento eliminado');
+    },
+    onError: () => toast.error('Error al eliminar el movimiento'),
+  });
 
   // Form state
   const [formData, setFormData] = useState({
@@ -458,15 +491,51 @@ export default function RecurringExpenses() {
                   ) : (
                     filtered.map((tx) => (
                     <Card key={tx.id} className="glass border-border/50">
-                      <CardContent className="p-3 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-2 h-8 rounded-full" style={{ backgroundColor: tx.category?.color || '#6b7280' }} />
-                          <div>
-                            <p className="text-sm font-medium">{tx.description || 'Sin descripción'}</p>
-                            <p className="text-xs text-muted-foreground">{tx.category?.name}</p>
+                      <CardContent className="p-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <div className="w-2 h-8 rounded-full flex-shrink-0" style={{ backgroundColor: tx.category?.color || '#6b7280' }} />
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium truncate">{tx.description || 'Sin descripción'}</p>
+                              <p className="text-xs text-muted-foreground">{tx.category?.name}</p>
+                              <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+                                <span className="flex items-center gap-1">
+                                  <Calendar className="h-3 w-3" />
+                                  {format(new Date(tx.transaction_date), 'd MMM', { locale: es })}
+                                </span>
+                                {(tx as any).account?.name && (
+                                  <span className="flex items-center gap-1">
+                                    <Wallet className="h-3 w-3" />
+                                    {(tx as any).account.name}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <CurrencyDisplay amount={Number(tx.amount)} currency={tx.currency} size="sm" className="text-expense" />
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => navigate(`/transactions/${tx.id}/edit`)}>
+                              <Edit className="h-3.5 w-3.5" />
+                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive">
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>¿Eliminar movimiento?</AlertDialogTitle>
+                                  <AlertDialogDescription>Esta acción no se puede deshacer. El saldo de la cuenta será revertido.</AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => deleteTransactionMutation.mutate(tx)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Eliminar</AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
                           </div>
                         </div>
-                        <CurrencyDisplay amount={Number(tx.amount)} currency={tx.currency} size="sm" className="text-expense" />
                       </CardContent>
                     </Card>
                   ))
@@ -711,7 +780,7 @@ export default function RecurringExpenses() {
                   ) : filtered.map((tx) => (
                     <Card key={tx.id} className="glass border-border/50">
                       <CardContent className="p-4">
-                        <div className="grid grid-cols-[45px_2fr_1fr_1fr_150px] items-center gap-4">
+                        <div className="grid grid-cols-[45px_2fr_1fr_1fr_1fr_150px] items-center gap-4">
                           <div className="w-9 h-9 rounded-xl bg-expense/10 flex items-center justify-center">
                             <TrendingDown className="h-4 w-4 text-expense" />
                           </div>
@@ -719,13 +788,41 @@ export default function RecurringExpenses() {
                             <h4 className="font-medium">{tx.description || 'Sin descripción'}</h4>
                             <p className="text-sm text-muted-foreground">{tx.notes || ''}</p>
                           </div>
+                          <div className="text-sm">
+                            <p className="text-muted-foreground flex items-center gap-1">
+                              <Calendar className="h-3.5 w-3.5" />
+                              {format(new Date(tx.transaction_date), 'd MMM yyyy', { locale: es })}
+                            </p>
+                            <p className="text-muted-foreground flex items-center gap-1 mt-0.5">
+                              <Wallet className="h-3.5 w-3.5" />
+                              {(tx as any).account?.name || 'Sin cuenta'}
+                            </p>
+                          </div>
                           <Badge variant="secondary" className="w-fit">{tx.category?.name || 'Sin categoría'}</Badge>
                           <div className="text-right font-bold">
                             <CurrencyDisplay amount={Number(tx.amount)} currency={tx.currency} size="md" className="text-expense" />
                           </div>
                           <div className="flex items-center justify-end gap-2">
-                            <Button variant="ghost" size="icon" className="h-8 w-8"><Edit className="h-4 w-4" /></Button>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive"><Trash2 className="h-4 w-4" /></Button>
+                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => navigate(`/transactions/${tx.id}/edit`)}>
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive">
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>¿Eliminar movimiento?</AlertDialogTitle>
+                                  <AlertDialogDescription>Esta acción no se puede deshacer. El saldo de la cuenta será revertido.</AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => deleteTransactionMutation.mutate(tx)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">Eliminar</AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
                           </div>
                         </div>
                       </CardContent>
