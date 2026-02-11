@@ -370,10 +370,10 @@ export default function Categories() {
             {!parentId && (
               <div className="space-y-2">
                 <Label>Categoría padre (opcional)</Label>
-                <Select value={parentId} onValueChange={setParentId}>
+                <Select value={parentId || 'none'} onValueChange={(v) => setParentId(v === 'none' ? '' : v)}>
                   <SelectTrigger><SelectValue placeholder="Ninguna (categoría raíz)" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Ninguna (categoría raíz)</SelectItem>
+                    <SelectItem value="none">Ninguna (categoría raíz)</SelectItem>
                     {availableParents.map(p => (
                       <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
                     ))}
