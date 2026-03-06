@@ -124,46 +124,12 @@ export default function EditTransaction() {
         throw new Error('Monto inválido');
       }
 
-      const originalAmount = Number(originalTransaction.amount);
-      const amountDiff = parsedAmount - originalAmount;
-
-      // Revert original balance changes
-      if (originalTransaction.transaction_type === 'income' && originalTransaction.account_id) {
-        const account = accounts?.find(a => a.id === originalTransaction.account_id);
-        if (account) {
-          await supabase
-            .from('accounts')
-            .update({ current_balance: Number(account.current_balance) - originalAmount })
-            .eq('id', originalTransaction.account_id);
-        }
-      } else if (originalTransaction.transaction_type === 'expense' && originalTransaction.account_id) {
-        const account = accounts?.find(a => a.id === originalTransaction.account_id);
-        if (account) {
-          await supabase
-            .from('accounts')
-            .update({ current_balance: Number(account.current_balance) + originalAmount })
-            .eq('id', originalTransaction.account_id);
-        }
-      } else if (originalTransaction.transaction_type === 'transfer') {
-        if (originalTransaction.source_account_id) {
-          const sourceAccount = accounts?.find(a => a.id === originalTransaction.source_account_id);
-          if (sourceAccount) {
-            await supabase
-              .from('accounts')
-              .update({ current_balance: Number(sourceAccount.current_balance) + originalAmount })
-              .eq('id', originalTransaction.source_account_id);
-          }
-        }
-        if (originalTransaction.destination_account_id) {
-          const destAccount = accounts?.find(a => a.id === originalTransaction.destination_account_id);
-          if (destAccount) {
-            await supabase
-              .from('accounts')
-              .update({ current_balance: Number(destAccount.current_balance) - originalAmount })
-              .eq('id', originalTransaction.destination_account_id);
-          }
-        }
-      }
+      // Collect all affected account IDs (old + new) for recalculation
+      const affectedAccountIds = new Set<string>();
+      
+      if (originalTransaction.account_id) affectedAccountIds.add(originalTransaction.account_id);
+      if (originalTransaction.source_account_id) affectedAccountIds.add(originalTransaction.source_account_id);
+      if (originalTransaction.destination_account_id) affectedAccountIds.add(originalTransaction.destination_account_id);
 
       // Update transaction
       const updateData: any = {
@@ -180,11 +146,14 @@ export default function EditTransaction() {
         updateData.destination_account_id = destinationAccountId;
         updateData.account_id = null;
         updateData.category_id = null;
+        if (sourceAccountId) affectedAccountIds.add(sourceAccountId);
+        if (destinationAccountId) affectedAccountIds.add(destinationAccountId);
       } else {
         updateData.account_id = accountId;
         updateData.category_id = categoryId || null;
         updateData.source_account_id = null;
         updateData.destination_account_id = null;
+        if (accountId) affectedAccountIds.add(accountId);
       }
 
       const { error } = await supabase
@@ -194,66 +163,9 @@ export default function EditTransaction() {
       
       if (error) throw error;
 
-      // Apply new balance changes
-      if (transactionType === 'income' && accountId) {
-        const account = accounts?.find(a => a.id === accountId);
-        if (account) {
-          // Need to refetch after previous update
-          const { data: refreshedAccount } = await supabase
-            .from('accounts')
-            .select('current_balance')
-            .eq('id', accountId)
-            .single();
-          
-          if (refreshedAccount) {
-            await supabase
-              .from('accounts')
-              .update({ current_balance: Number(refreshedAccount.current_balance) + parsedAmount })
-              .eq('id', accountId);
-          }
-        }
-      } else if (transactionType === 'expense' && accountId) {
-        const { data: refreshedAccount } = await supabase
-          .from('accounts')
-          .select('current_balance')
-          .eq('id', accountId)
-          .single();
-        
-        if (refreshedAccount) {
-          await supabase
-            .from('accounts')
-            .update({ current_balance: Number(refreshedAccount.current_balance) - parsedAmount })
-            .eq('id', accountId);
-        }
-      } else if (transactionType === 'transfer') {
-        if (sourceAccountId) {
-          const { data: refreshedSource } = await supabase
-            .from('accounts')
-            .select('current_balance')
-            .eq('id', sourceAccountId)
-            .single();
-          
-          if (refreshedSource) {
-            await supabase
-              .from('accounts')
-              .update({ current_balance: Number(refreshedSource.current_balance) - parsedAmount })
-              .eq('id', sourceAccountId);
-          }
-        }
-        if (destinationAccountId) {
-          const { data: refreshedDest } = await supabase
-            .from('accounts')
-            .select('current_balance')
-            .eq('id', destinationAccountId)
-            .single();
-          
-          if (refreshedDest) {
-            await supabase
-              .from('accounts')
-              .update({ current_balance: Number(refreshedDest.current_balance) + parsedAmount })
-              .eq('id', destinationAccountId);
-          }
-        }
+      // Recalculate all affected accounts from DB
+      for (const accId of affectedAccountIds) {
+        await supabase.rpc('recalculate_account_balance', { p_account_id: accId });
       }
     },
     onSuccess: () => {
