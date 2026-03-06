@@ -438,6 +438,17 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_patrimony_history: {
+        Args: { p_currency?: string; p_months?: number; p_user_id: string }
+        Returns: {
+          cumulative_patrimony: number
+          net_change: number
+          period_month: number
+          period_year: number
+          total_expense: number
+          total_income: number
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

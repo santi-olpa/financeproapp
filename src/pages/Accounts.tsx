@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { CurrencyDisplay } from '@/components/ui/currency-display';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { EmptyState } from '@/components/ui/empty-state';
+import { PatrimonyEvolutionChart } from '@/components/accounts/PatrimonyEvolutionChart';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { 
   Plus, 
@@ -185,6 +186,9 @@ export default function Accounts() {
             </CardContent>
           </Card>
 
+          {/* Patrimony Evolution Chart */}
+          <PatrimonyEvolutionChart />
+
           {/* Lista de cuentas */}
           {(!accounts || accounts.length === 0) ? (
             <EmptyState
@@ -338,7 +342,9 @@ export default function Accounts() {
             </Card>
           </div>
 
-          {/* Accounts List by Group */}
+          {/* Patrimony Evolution Chart */}
+          <PatrimonyEvolutionChart />
+
           {(!accounts || accounts.length === 0) ? (
             <EmptyState
               icon={Wallet}
