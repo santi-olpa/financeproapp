@@ -30,6 +30,7 @@ interface PatrimonyData {
   cumulative_patrimony: number;
 }
 
+// Patrimony Evolution Chart Component
 export function PatrimonyEvolutionChart() {
   const { user } = useAuth();
   const [currency, setCurrency] = useState<Currency>('ARS');
