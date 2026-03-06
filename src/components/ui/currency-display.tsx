@@ -30,9 +30,10 @@ export function CurrencyDisplay({
   // For display purposes, if marked as expense, show as negative
   const displayAmount = isExpense ? -Math.abs(amount) : amount;
   
+  const formattedAmount = showSign ? Math.abs(displayAmount) : displayAmount;
   const formatted = compact 
-    ? formatCompactCurrency(Math.abs(amount), currency)
-    : formatCurrency(Math.abs(amount), currency);
+    ? formatCompactCurrency(formattedAmount, currency)
+    : formatCurrency(formattedAmount, currency);
 
   const isPositive = displayAmount > 0;
   const isNegative = displayAmount < 0 || isExpense;
