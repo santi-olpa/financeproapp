@@ -445,6 +445,14 @@ export type Database = {
         }
         Returns: boolean
       }
+      recalculate_account_balance: {
+        Args: { p_account_id: string }
+        Returns: number
+      }
+      recalculate_all_account_balances: {
+        Args: { p_user_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       account_type: "bank" | "wallet" | "cash" | "investment" | "crypto"

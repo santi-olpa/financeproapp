@@ -71,16 +71,13 @@ export default function RecurringExpenses() {
   // Delete transaction mutation
   const deleteTransactionMutation = useMutation({
     mutationFn: async (tx: Transaction) => {
-      // Revert account balance
-      if (tx.account_id && (tx as any).account) {
-        const account = (tx as any).account;
-        await supabase
-          .from('accounts')
-          .update({ current_balance: Number(account.current_balance) + Number(tx.amount) })
-          .eq('id', tx.account_id);
-      }
+      const accountId = tx.account_id;
       const { error } = await supabase.from('transactions').delete().eq('id', tx.id);
       if (error) throw error;
+      // Recalculate account balance from DB
+      if (accountId) {
+        await supabase.rpc('recalculate_account_balance', { p_account_id: accountId });
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });

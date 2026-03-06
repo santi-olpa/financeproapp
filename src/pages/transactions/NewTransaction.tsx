@@ -168,15 +168,9 @@ export default function NewTransaction() {
         const errors = results.filter(r => r.error);
         if (errors.length > 0) throw errors[0].error;
 
-        // Only deduct the first installment from the account
+        // Recalculate account balance from DB
         if (accountId) {
-          const account = accounts?.find(a => a.id === accountId);
-          if (account) {
-            await supabase
-              .from('accounts')
-              .update({ current_balance: Number(account.current_balance) - installmentDetails.installmentAmount })
-              .eq('id', accountId);
-          }
+          await supabase.rpc('recalculate_account_balance', { p_account_id: accountId });
         }
       } else {
         // Normal single transaction
@@ -202,39 +196,16 @@ export default function NewTransaction() {
         const { error } = await supabase.from('transactions').insert(transactionData);
         if (error) throw error;
 
-        // Update account balance
-        if (transactionType === 'income' && accountId) {
-          const account = accounts?.find(a => a.id === accountId);
-          if (account) {
-            await supabase
-              .from('accounts')
-              .update({ current_balance: Number(account.current_balance) + parsedAmount })
-              .eq('id', accountId);
+        // Recalculate affected account balances from DB
+        if (transactionType === 'transfer') {
+          if (sourceAccountId) {
+            await supabase.rpc('recalculate_account_balance', { p_account_id: sourceAccountId });
           }
-        } else if (transactionType === 'expense' && accountId) {
-          const account = accounts?.find(a => a.id === accountId);
-          if (account) {
-            await supabase
-              .from('accounts')
-              .update({ current_balance: Number(account.current_balance) - parsedAmount })
-              .eq('id', accountId);
+          if (destinationAccountId) {
+            await supabase.rpc('recalculate_account_balance', { p_account_id: destinationAccountId });
           }
-        } else if (transactionType === 'transfer') {
-          const sourceAccount = accounts?.find(a => a.id === sourceAccountId);
-          const destAccount = accounts?.find(a => a.id === destinationAccountId);
-          
-          if (sourceAccount) {
-            await supabase
-              .from('accounts')
-              .update({ current_balance: Number(sourceAccount.current_balance) - parsedAmount })
-              .eq('id', sourceAccountId);
-          }
-          if (destAccount) {
-            await supabase
-              .from('accounts')
-              .update({ current_balance: Number(destAccount.current_balance) + parsedAmount })
-              .eq('id', destinationAccountId);
-          }
+        } else if (accountId) {
+          await supabase.rpc('recalculate_account_balance', { p_account_id: accountId });
         }
       }
     },

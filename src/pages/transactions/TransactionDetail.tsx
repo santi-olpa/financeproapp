@@ -73,37 +73,11 @@ export default function TransactionDetail() {
     mutationFn: async () => {
       if (!transaction) return;
 
-      // Revert account balance
-      if (transaction.transaction_type === 'income' && transaction.account_id) {
-        const account = transaction.account;
-        if (account) {
-          await supabase
-            .from('accounts')
-            .update({ current_balance: Number(account.current_balance) - Number(transaction.amount) })
-            .eq('id', transaction.account_id);
-        }
-      } else if (transaction.transaction_type === 'expense' && transaction.account_id) {
-        const account = transaction.account;
-        if (account) {
-          await supabase
-            .from('accounts')
-            .update({ current_balance: Number(account.current_balance) + Number(transaction.amount) })
-            .eq('id', transaction.account_id);
-        }
-      } else if (transaction.transaction_type === 'transfer') {
-        if (transaction.source_account_id && transaction.source_account) {
-          await supabase
-            .from('accounts')
-            .update({ current_balance: Number(transaction.source_account.current_balance) + Number(transaction.amount) })
-            .eq('id', transaction.source_account_id);
-        }
-        if (transaction.destination_account_id && transaction.destination_account) {
-          await supabase
-            .from('accounts')
-            .update({ current_balance: Number(transaction.destination_account.current_balance) - Number(transaction.amount) })
-            .eq('id', transaction.destination_account_id);
-        }
-      }
+      // Collect affected account IDs
+      const affectedAccountIds = new Set<string>();
+      if (transaction.account_id) affectedAccountIds.add(transaction.account_id);
+      if (transaction.source_account_id) affectedAccountIds.add(transaction.source_account_id);
+      if (transaction.destination_account_id) affectedAccountIds.add(transaction.destination_account_id);
 
       const { error } = await supabase
         .from('transactions')
@@ -111,6 +85,11 @@ export default function TransactionDetail() {
         .eq('id', id!);
       
       if (error) throw error;
+
+      // Recalculate all affected accounts from DB
+      for (const accId of affectedAccountIds) {
+        await supabase.rpc('recalculate_account_balance', { p_account_id: accId });
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
