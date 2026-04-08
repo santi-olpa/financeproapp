@@ -456,6 +456,9 @@ export default function RecurringExpenses() {
                   <Plus className="h-4 w-4 mr-2" />
                   Nuevo Gasto
                 </Button>
+                <Button variant="outline" onClick={handleExportCSV} title="Exportar gastos">
+                  <Download className="h-4 w-4" />
+                </Button>
                 <Button variant="outline" onClick={handleProcessRecurring} disabled={isProcessing}>
                   {isProcessing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
                 </Button>
