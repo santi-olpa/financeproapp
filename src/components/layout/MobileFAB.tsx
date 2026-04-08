@@ -42,8 +42,8 @@ export function MobileFAB({ onAiClick }: MobileFABProps) {
         />
       )}
 
-      {/* Actions menu */}
-      <div className="fixed bottom-24 right-4 z-50 flex flex-col-reverse items-end gap-3">
+      {/* Actions menu — arriba del FAB con gap suficiente */}
+      <div className="fixed bottom-[7.5rem] right-4 z-50 flex flex-col-reverse items-end gap-3 mb-2">
         {open && (
           <>
             {actions.map((action) => (
