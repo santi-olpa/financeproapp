@@ -350,43 +350,45 @@ export default function Expenses() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Donut */}
                   <div className="flex flex-col items-center">
-                    <div className="relative">
-                      <ResponsiveContainer width={220} height={220}>
-                        <PieChart>
-                          <Pie
-                            data={categoryBreakdown}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={60}
-                            outerRadius={95}
-                            paddingAngle={2}
-                            dataKey="total"
-                            nameKey="name"
-                          >
-                            {categoryBreakdown.map((cat, i) => (
-                              <Cell
-                                key={i}
-                                fill={cat.color}
-                                opacity={hasCategoryFilter && !selectedCategories.has(cat.name) ? 0.25 : 1}
-                                stroke={selectedCategories.has(cat.name) ? 'hsl(var(--primary))' : 'transparent'}
-                                strokeWidth={selectedCategories.has(cat.name) ? 2 : 0}
-                              />
-                            ))}
-                          </Pie>
-                          <RechartsTooltip
-                            formatter={(value: number, name: string) => [formatCurrency(value, currency), name]}
-                            contentStyle={{ backgroundColor: 'hsl(var(--card))', color: 'hsl(var(--card-foreground))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
-                            itemStyle={{ color: 'hsl(var(--card-foreground))' }}
-                            labelStyle={{ color: 'hsl(var(--muted-foreground))' }}
-                          />
-                        </PieChart>
-                      </ResponsiveContainer>
-                      {/* Total en el centro */}
-                      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                        <span className="text-xs text-muted-foreground">Total</span>
-                        <span className="text-lg font-bold">{formatCurrency(totalExpenses, currency)}</span>
-                      </div>
-                    </div>
+                    <ResponsiveContainer width={220} height={220}>
+                      <PieChart>
+                        <Pie
+                          data={categoryBreakdown}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={60}
+                          outerRadius={95}
+                          paddingAngle={2}
+                          dataKey="total"
+                          nameKey="name"
+                          label={false}
+                        >
+                          {categoryBreakdown.map((cat, i) => (
+                            <Cell
+                              key={i}
+                              fill={cat.color}
+                              opacity={hasCategoryFilter && !selectedCategories.has(cat.name) ? 0.25 : 1}
+                              stroke={selectedCategories.has(cat.name) ? 'hsl(var(--primary))' : 'transparent'}
+                              strokeWidth={selectedCategories.has(cat.name) ? 2 : 0}
+                            />
+                          ))}
+                        </Pie>
+                        <RechartsTooltip
+                          formatter={(value: number, name: string) => [formatCurrency(value, currency), name]}
+                          wrapperStyle={{ zIndex: 50 }}
+                          contentStyle={{ backgroundColor: 'hsl(var(--card))', color: 'hsl(var(--card-foreground))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
+                          itemStyle={{ color: 'hsl(var(--card-foreground))' }}
+                          labelStyle={{ color: 'hsl(var(--muted-foreground))' }}
+                        />
+                        {/* Total en el centro del donut usando Recharts text */}
+                        <text x="50%" y="46%" textAnchor="middle" dominantBaseline="middle" className="fill-muted-foreground" style={{ fontSize: '11px' }}>
+                          Total
+                        </text>
+                        <text x="50%" y="56%" textAnchor="middle" dominantBaseline="middle" className="fill-foreground" style={{ fontSize: '16px', fontWeight: 700 }}>
+                          {formatCurrency(totalExpenses, currency)}
+                        </text>
+                      </PieChart>
+                    </ResponsiveContainer>
                   </div>
 
                   {/* Grid de categorías */}
