@@ -39,7 +39,10 @@ import {
   Trash2,
   Download,
   Info,
+  Moon,
+  Sun,
 } from 'lucide-react';
+import { useTheme } from '@/hooks/useTheme';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -50,6 +53,7 @@ export default function ProfilePage() {
   const { user, signOut } = useAuth();
   const { profile, isLoading: profileLoading } = useProfile();
   const { hideAmounts, toggleHideAmounts } = usePrivacy();
+  const { theme, toggleTheme } = useTheme();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -226,6 +230,22 @@ export default function ProfilePage() {
                     </div>
                   </div>
                   <Switch checked={hideAmounts} onCheckedChange={toggleHideAmounts} />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Tema */}
+            <Card className="border-border/50">
+              <CardContent className="p-0">
+                <div className="flex items-center justify-between p-4">
+                  <div className="flex items-center gap-3">
+                    {theme === 'dark' ? <Moon className="h-5 w-5 text-muted-foreground" /> : <Sun className="h-5 w-5 text-muted-foreground" />}
+                    <div>
+                      <span className="text-sm font-medium">Modo oscuro</span>
+                      <p className="text-xs text-muted-foreground">Cambiá entre tema claro y oscuro</p>
+                    </div>
+                  </div>
+                  <Switch checked={theme === 'dark'} onCheckedChange={toggleTheme} />
                 </div>
               </CardContent>
             </Card>

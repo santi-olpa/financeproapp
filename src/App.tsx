@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/hooks/useProfile";
 import { PrivacyProvider } from "@/hooks/usePrivacy";
+import { useTheme } from "@/hooks/useTheme";
 import { LoadingScreen } from "@/components/ui/loading-spinner";
 import { AppLayout } from "@/components/layout/AppLayout";
 
@@ -26,7 +27,6 @@ import RecurringExpenses from "./pages/expenses/RecurringExpenses";
 import Reports from "./pages/Reports";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
-import OAuthInitiate from "./pages/auth/OAuthInitiate";
 import CardDetail from "./pages/cards/CardDetail";
 import NewPurchase from "./pages/cards/NewPurchase";
 import Planning from "./pages/Planning";
@@ -70,9 +70,6 @@ const AppRoutes = () => (
     {/* Public routes */}
     <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
     <Route path="/signup" element={<PublicRoute><SignUp /></PublicRoute>} />
-    {/* OAuth broker route (Lovable Cloud OAuth flow) */}
-    <Route path="/~oauth/initiate" element={<OAuthInitiate />} />
-    
     {/* Onboarding (protected but outside AppLayout) */}
     <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
 
@@ -103,17 +100,24 @@ const AppRoutes = () => (
   </Routes>
 );
 
+function ThemeInit({ children }: { children: React.ReactNode }) {
+  useTheme(); // Aplica dark/light class al <html> según localStorage
+  return <>{children}</>;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <AuthProvider>
-          <PrivacyProvider>
-            <AppRoutes />
-          </PrivacyProvider>
-        </AuthProvider>
+        <ThemeInit>
+          <AuthProvider>
+            <PrivacyProvider>
+              <AppRoutes />
+            </PrivacyProvider>
+          </AuthProvider>
+        </ThemeInit>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
