@@ -28,6 +28,7 @@ import NotFound from "./pages/NotFound";
 import OAuthInitiate from "./pages/auth/OAuthInitiate";
 import CardDetail from "./pages/cards/CardDetail";
 import NewPurchase from "./pages/cards/NewPurchase";
+import Planning from "./pages/Planning";
 
 const queryClient = new QueryClient();
 
@@ -72,6 +73,7 @@ const AppRoutes = () => (
       <Route path="/transactions/:id/edit" element={<EditTransaction />} />
       <Route path="/categories" element={<Categories />} />
       <Route path="/expenses" element={<RecurringExpenses />} />
+      <Route path="/planning" element={<Planning />} />
       <Route path="/reports" element={<Reports />} />
       <Route path="/profile" element={<Profile />} />
     </Route>
