@@ -772,6 +772,10 @@ export default function RecurringExpenses() {
                   <Plus className="h-4 w-4 mr-2" />
                   Nuevo Gasto
                 </Button>
+                <Button variant="outline" onClick={handleExportCSV}>
+                  <Download className="h-4 w-4 mr-2" />
+                  Exportar CSV
+                </Button>
               </div>
 
               {/* Category breakdown desktop */}
