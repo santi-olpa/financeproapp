@@ -10,7 +10,7 @@
 @layer base {
   :root {
     /* Light mode (fallback) */
-    --background: 220 20% 97%;
+    --background: 220 16% 93%;
     --foreground: 220 20% 10%;
 
     --card: 0 0% 100%;
@@ -51,7 +51,7 @@
     --expense: 0 75% 55%;
     --transfer: 210 90% 55%;
 
-    --sidebar-background: 220 20% 97%;
+    --sidebar-background: 220 16% 96%;
     --sidebar-foreground: 220 10% 35%;
     --sidebar-primary: 250 95% 65%;
     --sidebar-primary-foreground: 0 0% 100%;
