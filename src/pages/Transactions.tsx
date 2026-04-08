@@ -21,6 +21,7 @@ import {
   CreditCard,
   Calendar,
   Repeat,
+  ShoppingBag,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatRelativeDate, getMonthName } from '@/lib/format';
@@ -190,6 +191,11 @@ export default function Transactions() {
             <Link to="/transactions/new?type=transfer">
               <Button size="sm" variant="outline" className="rounded-full">
                 <ArrowLeftRight className="h-4 w-4 mr-1" /> <span className="hidden sm:inline">Transf.</span>
+              </Button>
+            </Link>
+            <Link to="/purchases/new">
+              <Button size="sm" variant="outline" className="rounded-full border-primary/50 text-primary">
+                <ShoppingBag className="h-4 w-4 mr-1" /> <span className="hidden sm:inline">Cuotas</span>
               </Button>
             </Link>
           </div>

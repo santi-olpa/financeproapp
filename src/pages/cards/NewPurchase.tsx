@@ -25,12 +25,13 @@ import { getMonthName } from '@/lib/format';
 import type { Account, Category, Currency } from '@/types/finance';
 
 export default function NewPurchase() {
-  const { id: cardId } = useParams<{ id: string }>();
+  const { id: paramCardId } = useParams<{ id: string }>();
   const { user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  const [selectedCardId, setSelectedCardId] = useState(paramCardId || '');
   const [description, setDescription] = useState('');
   const [merchant, setMerchant] = useState('');
   const [amount, setAmount] = useState('');
@@ -40,20 +41,26 @@ export default function NewPurchase() {
   const [categoryId, setCategoryId] = useState('');
   const [notes, setNotes] = useState('');
 
-  // Fetch card
-  const { data: card } = useQuery({
-    queryKey: ['account', cardId],
+  const cardId = selectedCardId;
+
+  // Fetch all credit cards (para selector cuando no viene por URL)
+  const { data: creditCards = [] } = useQuery({
+    queryKey: ['accounts', 'credit-cards'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('accounts')
         .select('*')
-        .eq('id', cardId!)
-        .single();
+        .eq('is_active', true)
+        .eq('account_type', 'credit_card')
+        .order('name');
       if (error) throw error;
-      return data as Account;
+      return data as Account[];
     },
-    enabled: !!cardId,
+    enabled: !!user,
   });
+
+  // La tarjeta seleccionada (del selector o del param)
+  const card = creditCards.find(c => c.id === cardId) ?? null;
 
   // Fetch expense categories
   const { data: categories = [] } = useQuery({
@@ -79,7 +86,6 @@ export default function NewPurchase() {
     const purchaseDateObj = new Date(purchaseDate + 'T12:00:00');
     const purchaseDay = purchaseDateObj.getDate();
 
-    // Determinar primer mes de billing
     let startMonth = purchaseDateObj.getMonth();
     let startYear = purchaseDateObj.getFullYear();
     if (purchaseDay > card.closing_day) {
@@ -92,12 +98,7 @@ export default function NewPurchase() {
       let m = startMonth + i;
       let y = startYear;
       while (m > 11) { m -= 12; y += 1; }
-      preview.push({
-        number: i + 1,
-        month: m + 1,
-        year: y,
-        amount: installmentAmount,
-      });
+      preview.push({ number: i + 1, month: m + 1, year: y, amount: installmentAmount });
     }
     return preview;
   }, [amount, installmentsCount, purchaseDate, card?.closing_day]);
@@ -106,7 +107,7 @@ export default function NewPurchase() {
     mutationFn: async () => {
       const { error } = await supabase.from('purchases').insert({
         user_id: user!.id,
-        card_account_id: cardId!,
+        card_account_id: cardId,
         description,
         merchant: merchant || null,
         total_amount: parseFloat(amount),
@@ -120,10 +121,11 @@ export default function NewPurchase() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['purchases', cardId] });
-      queryClient.invalidateQueries({ queryKey: ['installments', cardId] });
+      queryClient.invalidateQueries({ queryKey: ['purchases'] });
+      queryClient.invalidateQueries({ queryKey: ['installments'] });
       toast({ title: 'Compra cargada', description: 'Las cuotas se generaron automáticamente.' });
-      navigate(`/cards/${cardId}`);
+      // Si vino de una tarjeta, volver ahí; si no, ir a movimientos
+      navigate(paramCardId ? `/cards/${paramCardId}` : '/transactions');
     },
     onError: (error) => {
       console.error(error);
@@ -133,6 +135,10 @@ export default function NewPurchase() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!cardId) {
+      toast({ title: 'Error', description: 'Seleccioná una tarjeta.', variant: 'destructive' });
+      return;
+    }
     if (!description.trim()) {
       toast({ title: 'Error', description: 'La descripción es requerida.', variant: 'destructive' });
       return;
@@ -146,9 +152,36 @@ export default function NewPurchase() {
 
   return (
     <div className="min-h-screen bg-background">
-      <PageHeader title="Nueva Compra" subtitle={card?.name} showBack />
+      <PageHeader title="Nueva Compra con Tarjeta" subtitle={card?.name || 'Seleccioná una tarjeta'} showBack />
 
       <form onSubmit={handleSubmit} className="p-4 space-y-6 max-w-lg mx-auto">
+        {/* Selector de tarjeta (si no viene por URL) */}
+        {!paramCardId && (
+          <div className="space-y-2">
+            <Label>Tarjeta</Label>
+            {creditCards.length === 0 ? (
+              <Card className="border-warning/30 bg-warning/5">
+                <CardContent className="p-3 text-sm text-muted-foreground">
+                  No tenés tarjetas de crédito cargadas. <a href="/accounts/new" className="text-primary underline">Agregá una</a> primero.
+                </CardContent>
+              </Card>
+            ) : (
+              <Select value={selectedCardId} onValueChange={setSelectedCardId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar tarjeta" />
+                </SelectTrigger>
+                <SelectContent>
+                  {creditCards.map((cc) => (
+                    <SelectItem key={cc.id} value={cc.id}>
+                      {cc.name} ({cc.currency}) · Cierre día {cc.closing_day}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+        )}
+
         <div className="space-y-2">
           <Label htmlFor="description">Descripción</Label>
           <Input
@@ -187,9 +220,7 @@ export default function NewPurchase() {
           <div className="space-y-2">
             <Label>Moneda</Label>
             <Select value={currency} onValueChange={(v) => setCurrency(v as Currency)}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
+              <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="ARS">$ ARS</SelectItem>
                 <SelectItem value="USD">US$ USD</SelectItem>
@@ -202,7 +233,7 @@ export default function NewPurchase() {
           <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3">
             <AlertTriangle className="h-4 w-4 text-warning shrink-0 mt-0.5" />
             <p className="text-xs text-muted-foreground">
-              El monto se va a pesificar al cierre con el dólar tarjeta del mes. Vamos a estimar con el último valor cargado.
+              El monto se va a pesificar al cierre con el dólar tarjeta del mes.
             </p>
           </div>
         )}
@@ -210,12 +241,7 @@ export default function NewPurchase() {
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="date">Fecha de compra</Label>
-            <Input
-              id="date"
-              type="date"
-              value={purchaseDate}
-              onChange={(e) => setPurchaseDate(e.target.value)}
-            />
+            <Input id="date" type="date" value={purchaseDate} onChange={(e) => setPurchaseDate(e.target.value)} />
           </div>
           <div className="space-y-2">
             <div className="flex items-center gap-2">
@@ -233,18 +259,12 @@ export default function NewPurchase() {
           </div>
         </div>
 
-        {/* Preview de cuotas */}
         {installmentPreview.length > 1 && (
           <Card className="border-border/50">
             <CardContent className="p-3">
               <p className="text-xs font-medium text-muted-foreground mb-2">
                 Preview: {installmentPreview.length} cuotas de{' '}
-                <CurrencyDisplay
-                  amount={installmentPreview[0].amount}
-                  currency={currency}
-                  size="sm"
-                  className="inline"
-                />
+                <CurrencyDisplay amount={installmentPreview[0].amount} currency={currency} size="sm" className="inline" />
               </p>
               <div className="grid grid-cols-3 sm:grid-cols-4 gap-1 text-xs">
                 {installmentPreview.slice(0, 8).map((p) => (
@@ -263,14 +283,10 @@ export default function NewPurchase() {
         <div className="space-y-2">
           <Label>Categoría (opcional)</Label>
           <Select value={categoryId} onValueChange={setCategoryId}>
-            <SelectTrigger>
-              <SelectValue placeholder="Seleccionar categoría" />
-            </SelectTrigger>
+            <SelectTrigger><SelectValue placeholder="Seleccionar categoría" /></SelectTrigger>
             <SelectContent>
               {categories.map((cat) => (
-                <SelectItem key={cat.id} value={cat.id}>
-                  {cat.name}
-                </SelectItem>
+                <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -278,16 +294,10 @@ export default function NewPurchase() {
 
         <div className="space-y-2">
           <Label htmlFor="notes">Notas (opcional)</Label>
-          <Textarea
-            id="notes"
-            placeholder="Notas adicionales..."
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={2}
-          />
+          <Textarea id="notes" placeholder="Notas adicionales..." value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
         </div>
 
-        <Button type="submit" className="w-full" disabled={createMutation.isPending}>
+        <Button type="submit" className="w-full" disabled={createMutation.isPending || !cardId}>
           {createMutation.isPending ? <LoadingSpinner size="sm" /> : 'Crear compra'}
         </Button>
       </form>
