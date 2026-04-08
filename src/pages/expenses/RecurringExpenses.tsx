@@ -374,6 +374,61 @@ export default function RecurringExpenses() {
     return { paidCount, total, baseName };
   };
 
+  // Export expenses to CSV
+  const handleExportCSV = () => {
+    const allExpenses: { fecha: string; descripcion: string; categoria: string; cuenta: string; tipo: string; monto: number; moneda: string }[] = [];
+
+    // Regular monthly expenses
+    (monthlyTransactions ?? []).forEach(tx => {
+      allExpenses.push({
+        fecha: tx.transaction_date,
+        descripcion: tx.description || 'Sin descripción',
+        categoria: tx.category?.name || 'Sin categoría',
+        cuenta: (tx as any).account?.name || 'Sin cuenta',
+        tipo: tx.has_installments ? `Cuota ${tx.current_installment || '-'}/${tx.total_installments || '-'}` : 'Gasto',
+        monto: Number(tx.amount),
+        moneda: tx.currency,
+      });
+    });
+
+    // Active recurring expenses (projected)
+    (recurringExpenses ?? []).filter(e => e.is_active).forEach(exp => {
+      const alreadyInTx = (monthlyTransactions ?? []).some(tx => tx.recurring_expense_id === exp.id);
+      if (!alreadyInTx) {
+        allExpenses.push({
+          fecha: exp.next_due_date,
+          descripcion: exp.name,
+          categoria: exp.category?.name || 'Sin categoría',
+          cuenta: exp.account?.name || 'Sin cuenta',
+          tipo: `Recurrente (${FREQUENCY_LABELS[exp.frequency]})`,
+          monto: Number(exp.amount),
+          moneda: exp.currency,
+        });
+      }
+    });
+
+    if (allExpenses.length === 0) {
+      toast.info('No hay datos para exportar');
+      return;
+    }
+
+    allExpenses.sort((a, b) => b.fecha.localeCompare(a.fecha));
+
+    const header = 'Fecha,Descripción,Categoría,Cuenta,Tipo,Monto,Moneda';
+    const rows = allExpenses.map(e =>
+      `${e.fecha},"${e.descripcion.replace(/"/g, '""')}","${e.categoria}","${e.cuenta}","${e.tipo}",${e.monto},${e.moneda}`
+    );
+    const csv = [header, ...rows].join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `gastos_${getMonthName(month)}_${year}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    toast.success('Archivo exportado');
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
