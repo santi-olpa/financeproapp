@@ -33,21 +33,8 @@ serve(async (req) => {
       );
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
-    
-    if (claimsError || !claimsData?.claims) {
-      return new Response(
-        JSON.stringify({ error: "Token inválido" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    // La validación JWT la hace Supabase a nivel gateway.
+    // Acá solo verificamos que haya un token presente.
 
     const { userInput, accounts, categories } = await req.json();
     
@@ -67,26 +54,27 @@ serve(async (req) => {
       .map(c => `"${c.name}"`)
       .join(", ");
 
-    const systemPrompt = `Eres un asistente financiero inteligente para una aplicación de finanzas personales en Argentina. 
-Tu única tarea es interpretar frases del usuario sobre movimientos financieros y extraer datos estructurados.
+    const systemPrompt = `Sos un asistente financiero para una app de finanzas personales en Argentina.
+Tu ÚNICA tarea es interpretar frases en español argentino sobre movimientos de plata y extraer datos estructurados.
 
 CONTEXTO DEL USUARIO:
-- Cuentas disponibles: ${accountNames}
+- Cuentas: ${accountNames}
 - Categorías de gasto: ${expenseCategories}
 - Categorías de ingreso: ${incomeCategories}
 
-REGLAS IMPORTANTES:
-1. Si el usuario menciona un gasto/egreso, el tipo es "expense"
-2. Si el usuario menciona un ingreso/cobro/pago recibido, el tipo es "income"
-3. Si el usuario menciona transferencia entre cuentas, el tipo es "transfer"
-4. Mapea los nombres de cuentas y categorías a las opciones disponibles del usuario
-5. Si no puedes determinar la cuenta, usa null
-6. Si no puedes determinar la categoría, intenta inferirla del contexto o usa null
-7. La moneda por defecto es ARS, a menos que el usuario mencione dólares/USD/US$
-8. Si el usuario dice "Mercado Pago", "MP", "uala", "Ualá" busca la cuenta que coincida
-9. Interpreta modismos argentinos: "luca" = 1000, "palo" = 1.000.000, "mango" = peso
+REGLAS:
+1. Gasto/egreso/compré/pagué/gasté → type "expense"
+2. Cobré/me pagaron/me transfirieron/ingreso/sueldo → type "income"
+3. Pasé plata/transferí entre cuentas propias → type "transfer"
+4. Mapeá cuentas y categorías a las disponibles. Si dice "MP" = Mercado Pago, "uala"/"Ualá" = Ualá, "galicia"/"banco" = buscar coincidencia.
+5. Moneda default ARS salvo que diga "dólares", "USD", "US$", "verdes".
+6. Modismos argentinos: "luca" = 1000, "dos lucas" = 2000, "palo" = 1.000.000, "mango" = peso, "gamba" = 100.
+7. "super"/"súper" = Supermercado, "delivery"/"pedidos ya"/"rappi" = Restaurantes y delivery, "uber"/"taxi"/"bondi"/"sube" = Transporte, "luz"/"gas"/"agua" = Servicios.
+8. Si dice "en 3 cuotas" o "en cuotas", igual extraé el monto total y type expense. Las cuotas se manejan aparte.
+9. Números: "quince mil" = 15000, "5k" = 5000, "medio palo" = 500000.
+10. Si no podés determinar cuenta o categoría, usá null.
 
-Responde SOLO con la función createTransaction y los parámetros extraídos.`;
+Respondé SOLO con la función createTransaction.`;
 
     const response = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
       method: "POST",
