@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -12,7 +13,6 @@ import { TrendIndicator } from '@/components/kpi/TrendIndicator';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Badge } from '@/components/ui/badge';
-import { CategoryPieChart } from '@/components/reports/CategoryPieChart';
 import { PeriodSelector } from '@/components/reports/PeriodSelector';
 import {
   TrendingDown,
@@ -23,7 +23,7 @@ import {
   ShoppingBag,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { getCurrentPeriod, getMonthName, formatRelativeDate, formatDate } from '@/lib/format';
+import { getCurrentPeriod, getMonthName, formatRelativeDate, formatDate, formatCurrency } from '@/lib/format';
 import type { Transaction, Category, Currency, Installment } from '@/types/finance';
 import { INSTALLMENT_STATUS_LABELS } from '@/types/finance';
 
@@ -260,42 +260,78 @@ export default function Expenses() {
       <div className="p-4 md:p-6">
         <div className="max-w-6xl mx-auto space-y-6">
 
-          {/* === MÉTRICAS DEL PERÍODO === */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <Card className="border-border/50">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-xs font-medium text-muted-foreground uppercase">Ingresos</span>
-                  <HelpTooltip text="Total de ingresos reales del mes seleccionado." />
-                </div>
-                <CurrencyDisplay amount={totalIncomeAmount} currency={currency} size="xl" className="text-income font-bold" enablePrivacy />
-                <div className="mt-1"><TrendIndicator current={totalIncomeAmount} previous={prevTotalIncome} /></div>
-              </CardContent>
-            </Card>
+          {/* === MÉTRICAS + GRÁFICO INGRESOS VS EGRESOS === */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            {/* Números */}
+            <div className="lg:col-span-1 grid grid-cols-3 lg:grid-cols-1 gap-4">
+              <Card className="border-border/50">
+                <CardContent className="p-3 md:p-4">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="text-[10px] md:text-xs font-medium text-muted-foreground uppercase">Ingresos</span>
+                    <HelpTooltip text="Total de ingresos reales del mes seleccionado." iconClassName="h-3 w-3" />
+                  </div>
+                  <CurrencyDisplay amount={totalIncomeAmount} currency={currency} size="lg" className="text-income font-bold" enablePrivacy />
+                  <div className="mt-1 hidden sm:block"><TrendIndicator current={totalIncomeAmount} previous={prevTotalIncome} /></div>
+                </CardContent>
+              </Card>
+              <Card className="border-border/50">
+                <CardContent className="p-3 md:p-4">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="text-[10px] md:text-xs font-medium text-muted-foreground uppercase">Gastos</span>
+                    <HelpTooltip text="Total devengado: directos + cuotas de tarjeta imputadas al mes." iconClassName="h-3 w-3" />
+                  </div>
+                  <CurrencyDisplay amount={totalExpenses} currency={currency} size="lg" className="text-expense font-bold" enablePrivacy />
+                  <div className="mt-1 hidden sm:block"><TrendIndicator current={totalExpenses} previous={prevTotalExpenses} invertColor /></div>
+                </CardContent>
+              </Card>
+              <Card className={`border ${net >= 0 ? 'border-income/30 bg-income/5' : 'border-expense/30 bg-expense/5'}`}>
+                <CardContent className="p-3 md:p-4">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="text-[10px] md:text-xs font-medium text-muted-foreground uppercase">Neto</span>
+                  </div>
+                  <CurrencyDisplay amount={net} currency={currency} size="lg" className={`font-bold ${net >= 0 ? 'text-income' : 'text-expense'}`} enablePrivacy />
+                </CardContent>
+              </Card>
+            </div>
 
-            <Card className="border-border/50">
+            {/* Gráfico de barras Ingresos vs Egresos */}
+            <Card className="lg:col-span-2 border-border/50">
               <CardContent className="p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-xs font-medium text-muted-foreground uppercase">Gastos</span>
-                  <HelpTooltip text="Total devengado del mes: gastos directos (lo que salió de tus cuentas) + cuotas de tarjeta imputadas al mes por su billing_period. Es distinto del total de Movimientos porque acá las cuotas pesan mes a mes." />
+                <div className="flex items-center gap-2 mb-3">
+                  <h3 className="font-semibold text-sm">Ingresos vs Egresos</h3>
+                  <HelpTooltip text="Comparación visual entre lo que ingresó y lo que se gastó (devengado) en el mes." />
                 </div>
-                <CurrencyDisplay amount={totalExpenses} currency={currency} size="xl" className="text-expense font-bold" enablePrivacy />
-                <div className="mt-1"><TrendIndicator current={totalExpenses} previous={prevTotalExpenses} invertColor /></div>
-              </CardContent>
-            </Card>
-
-            <Card className={`border ${net >= 0 ? 'border-income/30 bg-income/5' : 'border-expense/30 bg-expense/5'}`}>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-xs font-medium text-muted-foreground uppercase">Neto</span>
-                  <HelpTooltip text="Ingresos menos gastos devengados. Positivo = ahorraste, negativo = gastaste más de lo que ganaste." />
+                <ResponsiveContainer width="100%" height={180}>
+                  <BarChart data={[
+                    { name: 'Ingresos', value: totalIncomeAmount, fill: 'hsl(var(--income))' },
+                    { name: 'Directos', value: totalDirectExpenses, fill: 'hsl(var(--expense))' },
+                    { name: 'Cuotas', value: totalInstallments, fill: 'hsl(var(--primary))' },
+                  ]} layout="vertical" margin={{ left: 10, right: 30, top: 5, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
+                    <XAxis type="number" tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
+                    <YAxis type="category" dataKey="name" width={70} tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
+                    <RechartsTooltip formatter={(value: number) => formatCurrency(value, currency)} contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }} />
+                    <Bar dataKey="value" radius={[0, 6, 6, 0]} barSize={28}>
+                      {[
+                        { fill: 'hsl(145, 70%, 45%)' },
+                        { fill: 'hsl(0, 75%, 55%)' },
+                        { fill: 'hsl(250, 95%, 65%)' },
+                      ].map((entry, i) => (
+                        <Cell key={i} fill={entry.fill} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+                <div className="flex gap-4 mt-2 text-xs text-muted-foreground justify-center">
+                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'hsl(145, 70%, 45%)' }} /> Ingresos</span>
+                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'hsl(0, 75%, 55%)' }} /> Directos</span>
+                  <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'hsl(250, 95%, 65%)' }} /> Cuotas</span>
                 </div>
-                <CurrencyDisplay amount={net} currency={currency} size="xl" className={`font-bold ${net >= 0 ? 'text-income' : 'text-expense'}`} enablePrivacy />
               </CardContent>
             </Card>
           </div>
 
-          {/* === DESGLOSE POR CATEGORÍA === */}
+          {/* === DESGLOSE POR CATEGORÍA: TORTA + GRID === */}
           <Card className="border-border/50">
             <CardContent className="p-4 md:p-6">
               <div className="flex items-center gap-2 mb-4">
@@ -311,38 +347,77 @@ export default function Expenses() {
               {categoryBreakdown.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-4">Sin gastos en este período.</p>
               ) : (
-                <div className="space-y-2">
-                  {categoryBreakdown.map((cat) => {
-                    const pct = totalExpenses > 0 ? Math.round((cat.total / totalExpenses) * 100) : 0;
-                    const isSelected = selectedCategories.has(cat.name);
-                    const dimmed = hasCategoryFilter && !isSelected;
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Donut */}
+                  <div className="flex flex-col items-center">
+                    <div className="relative">
+                      <ResponsiveContainer width={220} height={220}>
+                        <PieChart>
+                          <Pie
+                            data={categoryBreakdown}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={60}
+                            outerRadius={95}
+                            paddingAngle={2}
+                            dataKey="total"
+                            nameKey="name"
+                          >
+                            {categoryBreakdown.map((cat, i) => (
+                              <Cell
+                                key={i}
+                                fill={cat.color}
+                                opacity={hasCategoryFilter && !selectedCategories.has(cat.name) ? 0.25 : 1}
+                                stroke={selectedCategories.has(cat.name) ? 'hsl(var(--primary))' : 'transparent'}
+                                strokeWidth={selectedCategories.has(cat.name) ? 2 : 0}
+                              />
+                            ))}
+                          </Pie>
+                          <RechartsTooltip
+                            formatter={(value: number, name: string) => [formatCurrency(value, currency), name]}
+                            contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                      {/* Total en el centro */}
+                      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                        <span className="text-xs text-muted-foreground">Total</span>
+                        <span className="text-lg font-bold">{formatCurrency(totalExpenses, currency)}</span>
+                      </div>
+                    </div>
+                  </div>
 
-                    return (
-                      <button
-                        key={cat.id}
-                        onClick={() => toggleCategory(cat.name)}
-                        className={`w-full text-left rounded-lg p-2.5 transition-all ${
-                          isSelected ? 'bg-primary/10 ring-1 ring-primary/30' :
-                          dimmed ? 'opacity-40' : 'hover:bg-muted/50'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="flex items-center gap-2 text-sm">
+                  {/* Grid de categorías */}
+                  <div className="grid grid-cols-2 gap-2">
+                    {categoryBreakdown.map((cat) => {
+                      const pct = totalExpenses > 0 ? Math.round((cat.total / totalExpenses) * 100) : 0;
+                      const isSelected = selectedCategories.has(cat.name);
+                      const dimmed = hasCategoryFilter && !isSelected;
+
+                      return (
+                        <button
+                          key={cat.id}
+                          onClick={() => toggleCategory(cat.name)}
+                          className={`text-left rounded-lg p-2.5 border transition-all ${
+                            isSelected ? 'border-primary bg-primary/10' :
+                            dimmed ? 'border-border/30 opacity-40' : 'border-border/50 hover:border-primary/30'
+                          }`}
+                        >
+                          <div className="flex items-center gap-1.5 mb-1">
                             <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
-                            <span className="truncate">{cat.name}</span>
-                            {cat.isEssential && <Badge variant="outline" className="text-[10px] px-1 py-0">Esencial</Badge>}
-                          </span>
-                          <span className="flex items-center gap-3 text-sm shrink-0">
-                            <span className="text-muted-foreground">{pct}%</span>
-                            <CurrencyDisplay amount={cat.total} currency={currency} size="sm" />
-                          </span>
-                        </div>
-                        <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
-                          <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: cat.color }} />
-                        </div>
-                      </button>
-                    );
-                  })}
+                            <span className="text-xs font-medium truncate">{cat.name}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-bold tabular-nums">
+                              <CurrencyDisplay amount={cat.total} currency={currency} size="sm" />
+                            </span>
+                            <span className="text-xs text-muted-foreground">{pct}%</span>
+                          </div>
+                          {cat.isEssential && <Badge variant="outline" className="text-[9px] px-1 py-0 mt-1">Esencial</Badge>}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </CardContent>
