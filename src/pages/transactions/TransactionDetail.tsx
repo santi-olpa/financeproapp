@@ -132,6 +132,7 @@ export default function TransactionDetail() {
     income: { icon: TrendingUp, label: 'Ingreso', color: 'text-income', bg: 'bg-income/10' },
     expense: { icon: TrendingDown, label: 'Egreso', color: 'text-expense', bg: 'bg-expense/10' },
     transfer: { icon: ArrowLeftRight, label: 'Transferencia', color: 'text-warning', bg: 'bg-warning/10' },
+    card_payment: { icon: CreditCard, label: 'Pago de resumen', color: 'text-primary', bg: 'bg-primary/10' },
     adjustment: { icon: ArrowLeftRight, label: 'Ajuste', color: 'text-muted-foreground', bg: 'bg-muted/10' },
   };
 
@@ -268,20 +269,16 @@ export default function TransactionDetail() {
               </div>
             )}
 
-            {/* Installments */}
-            {transaction.has_installments && (
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-muted">
-                  <CreditCard className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Cuota</p>
-                  <p className="font-medium">
-                    {transaction.current_installment} de {transaction.total_installments}
-                  </p>
-                </div>
+            {/* Verified */}
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-muted">
+                <Tag className="h-4 w-4 text-muted-foreground" />
               </div>
-            )}
+              <div>
+                <p className="text-sm text-muted-foreground">Estado</p>
+                <p className="font-medium">{transaction.is_verified ? 'Verificado' : 'Sin verificar'}</p>
+              </div>
+            </div>
 
             {/* Notes */}
             {transaction.notes && (
