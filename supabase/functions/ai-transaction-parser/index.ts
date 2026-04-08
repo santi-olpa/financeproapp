@@ -76,69 +76,33 @@ REGLAS:
 
 Respondé SOLO con la función createTransaction.`;
 
-    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${GEMINI_API_KEY}`,
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "gemini-2.0-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userInput },
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "createTransaction",
-              description: "Crea una transacción financiera con los datos extraídos de la frase del usuario",
-              parameters: {
-                type: "object",
-                properties: {
-                  amount: {
-                    type: "number",
-                    description: "El monto de la transacción en número. Ej: 15000 para 'quince mil'"
-                  },
-                  currency: {
-                    type: "string",
-                    enum: ["ARS", "USD"],
-                    description: "La moneda de la transacción. Por defecto ARS"
-                  },
-                  type: {
-                    type: "string",
-                    enum: ["income", "expense", "transfer"],
-                    description: "El tipo de transacción"
-                  },
-                  description: {
-                    type: "string",
-                    description: "Descripción breve del movimiento. Ej: 'Supermercado', 'Sueldo', 'Uber'"
-                  },
-                  accountName: {
-                    type: "string",
-                    description: "El nombre de la cuenta mencionada por el usuario. Debe coincidir con una de las cuentas disponibles"
-                  },
-                  categoryName: {
-                    type: "string",
-                    description: "El nombre de la categoría inferida. Debe coincidir con una de las categorías disponibles"
-                  },
-                  sourceAccountName: {
-                    type: "string",
-                    description: "Para transferencias: cuenta de origen"
-                  },
-                  destinationAccountName: {
-                    type: "string",
-                    description: "Para transferencias: cuenta de destino"
-                  }
-                },
-                required: ["amount", "type"],
-                additionalProperties: false
-              }
-            }
-          }
-        ],
-        tool_choice: { type: "function", function: { name: "createTransaction" } }
+        system_instruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ role: "user", parts: [{ text: userInput }] }],
+        tools: [{
+          function_declarations: [{
+            name: "createTransaction",
+            description: "Crea una transacción financiera con los datos extraídos",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                amount: { type: "NUMBER", description: "Monto numérico. Ej: 15000" },
+                currency: { type: "STRING", enum: ["ARS", "USD"], description: "Moneda (default ARS)" },
+                type: { type: "STRING", enum: ["income", "expense", "transfer"], description: "Tipo" },
+                description: { type: "STRING", description: "Descripción breve" },
+                accountName: { type: "STRING", description: "Cuenta del usuario" },
+                categoryName: { type: "STRING", description: "Categoría inferida" },
+                sourceAccountName: { type: "STRING", description: "Cuenta origen (transfers)" },
+                destinationAccountName: { type: "STRING", description: "Cuenta destino (transfers)" },
+              },
+              required: ["amount", "type"],
+            },
+          }],
+        }],
+        tool_config: { function_calling_config: { mode: "ANY", allowed_function_names: ["createTransaction"] } },
       }),
     });
 
@@ -155,14 +119,15 @@ Respondé SOLO con la función createTransaction.`;
     }
 
     const data = await response.json();
-    
-    // Extract the function call result
-    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall || toolCall.function.name !== "createTransaction") {
+
+    // Gemini native format: candidates[0].content.parts[0].functionCall
+    const functionCall = data.candidates?.[0]?.content?.parts?.[0]?.functionCall;
+    if (!functionCall || functionCall.name !== "createTransaction") {
+      console.error("Unexpected Gemini response:", JSON.stringify(data));
       throw new Error("No se pudo interpretar la transacción");
     }
 
-    const parsedArgs = JSON.parse(toolCall.function.arguments);
+    const parsedArgs = functionCall.args;
     
     // Map account and category names to IDs
     const result: any = {
