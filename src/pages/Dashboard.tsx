@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { endOfMonth, format } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -65,13 +66,30 @@ export default function Dashboard() {
     enabled: !!user,
   });
 
-  // Fetch current month transactions
-  const { data: transactions, isLoading: loadingTransactions } = useQuery({
-    queryKey: ['transactions', month, year],
+  // Rango del mes calculado correctamente con endOfMonth
+  const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+  const lastDay = format(endOfMonth(new Date(year, month - 1)), 'yyyy-MM-dd');
+
+  // Query de totales del mes — SIN limit, para que los cálculos sean correctos
+  const { data: monthTransactions, isLoading: loadingMonthTotals } = useQuery({
+    queryKey: ['transactions', 'month-totals', month, year],
     queryFn: async () => {
-      const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-      const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
-      
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('amount, transaction_type, currency')
+        .gte('transaction_date', startDate)
+        .lte('transaction_date', lastDay);
+
+      if (error) throw error;
+      return data as Pick<Transaction, 'amount' | 'transaction_type' | 'currency'>[];
+    },
+    enabled: !!user,
+  });
+
+  // Query de últimos movimientos — con limit, solo para la lista
+  const { data: recentTransactions, isLoading: loadingTransactions } = useQuery({
+    queryKey: ['transactions', 'recent', month, year],
+    queryFn: async () => {
       const { data, error } = await supabase
         .from('transactions')
         .select(`
@@ -79,10 +97,10 @@ export default function Dashboard() {
           category:categories(name, icon, color)
         `)
         .gte('transaction_date', startDate)
-        .lte('transaction_date', endDate)
+        .lte('transaction_date', lastDay)
         .order('transaction_date', { ascending: false })
         .limit(10);
-      
+
       if (error) throw error;
       return data as (Transaction & { category: { name: string; icon: string; color: string } | null })[];
     },
@@ -98,23 +116,23 @@ export default function Dashboard() {
     ?.filter(a => a.currency === 'USD')
     .reduce((sum, a) => sum + Number(a.current_balance), 0) ?? 0;
 
-  const monthlyIncomeARS = transactions
+  const monthlyIncomeARS = monthTransactions
     ?.filter(t => t.transaction_type === 'income' && t.currency === 'ARS')
     .reduce((sum, t) => sum + Number(t.amount), 0) ?? 0;
 
-  const monthlyExpenseARS = transactions
+  const monthlyExpenseARS = monthTransactions
     ?.filter(t => t.transaction_type === 'expense' && t.currency === 'ARS')
     .reduce((sum, t) => sum + Number(t.amount), 0) ?? 0;
 
-  const monthlyIncomeUSD = transactions
+  const monthlyIncomeUSD = monthTransactions
     ?.filter(t => t.transaction_type === 'income' && t.currency === 'USD')
     .reduce((sum, t) => sum + Number(t.amount), 0) ?? 0;
 
-  const monthlyExpenseUSD = transactions
+  const monthlyExpenseUSD = monthTransactions
     ?.filter(t => t.transaction_type === 'expense' && t.currency === 'USD')
     .reduce((sum, t) => sum + Number(t.amount), 0) ?? 0;
 
-  if (loadingAccounts || loadingTransactions) {
+  if (loadingAccounts || loadingTransactions || loadingMonthTotals) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <LoadingSpinner size="lg" />
@@ -264,7 +282,7 @@ export default function Dashboard() {
               </Link>
             </div>
 
-            {(!transactions || transactions.length === 0) ? (
+            {(!recentTransactions || recentTransactions.length === 0) ? (
               <EmptyState
                 icon={TrendingUp}
                 title="Sin movimientos"
@@ -280,7 +298,7 @@ export default function Dashboard() {
               />
             ) : (
               <div className="space-y-2">
-                {transactions.slice(0, 5).map((transaction) => (
+                {recentTransactions.slice(0, 5).map((transaction) => (
                   <Link key={transaction.id} to={`/transactions/${transaction.id}`}>
                     <Card className="glass border-border/50 hover:border-primary/50 transition-colors">
                       <CardContent className="p-3 flex items-center justify-between">
@@ -526,7 +544,7 @@ export default function Dashboard() {
               </Link>
             </div>
 
-            {(!transactions || transactions.length === 0) ? (
+            {(!recentTransactions || recentTransactions.length === 0) ? (
               <EmptyState
                 icon={TrendingUp}
                 title="Sin movimientos"
@@ -542,7 +560,7 @@ export default function Dashboard() {
               />
             ) : (
               <div className="space-y-2">
-                {transactions.slice(0, 5).map((transaction) => (
+                {recentTransactions.slice(0, 5).map((transaction) => (
                   <Link key={transaction.id} to={`/transactions/${transaction.id}`}>
                     <Card className="glass border-border/50 hover:bg-secondary/30 transition-colors">
                       <CardContent className="p-4 flex items-center justify-between">
