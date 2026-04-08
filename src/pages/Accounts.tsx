@@ -1,4 +1,4 @@
-import { useState } from 'react'; // Accounts module
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -8,30 +8,21 @@ import { Button } from '@/components/ui/button';
 import { CurrencyDisplay } from '@/components/ui/currency-display';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { EmptyState } from '@/components/ui/empty-state';
+import { HelpTooltip } from '@/components/ui/help-tooltip';
 import { PatrimonyEvolutionChart } from '@/components/accounts/PatrimonyEvolutionChart';
-import { useIsMobile } from '@/hooks/use-mobile';
-import { 
-  Plus, 
+import { AccountGroupSection } from '@/components/accounts/AccountGroupSection';
+import {
+  Plus,
   Wallet,
   Building2,
-  Smartphone,
-  Banknote,
+  CreditCard,
+  PiggyBank,
   TrendingUp,
-  Bitcoin,
-  MoreVertical,
-  Pencil,
-  Trash2,
-  RefreshCw
+  RefreshCw,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import type { Account, AccountType } from '@/types/finance';
+import type { Account, AccountSubtype } from '@/types/finance';
 import { useToast } from '@/hooks/use-toast';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,27 +34,35 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
-const accountTypeIcons: Record<AccountType, typeof Wallet> = {
-  bank: Building2,
-  wallet: Smartphone,
-  cash: Banknote,
-  investment: TrendingUp,
-  crypto: Bitcoin,
+const SUBTYPE_CONFIG: Record<AccountSubtype, { label: string; icon: typeof Wallet; tooltip: string }> = {
+  operating: {
+    label: 'Operativas',
+    icon: Building2,
+    tooltip: 'Cuentas de uso diario: bancos, billeteras, efectivo. Su saldo se cuenta como liquidez disponible.',
+  },
+  reserve: {
+    label: 'Ahorro',
+    icon: PiggyBank,
+    tooltip: 'Cuentas separadas para guardar. No cuentan como liquidez disponible pero sí como patrimonio.',
+  },
+  liability: {
+    label: 'Tarjetas de Crédito',
+    icon: CreditCard,
+    tooltip: 'Tus tarjetas. Acá ves la deuda actual de cada una y podés gestionar compras y pagos de resumen.',
+  },
+  investment: {
+    label: 'Inversiones',
+    icon: TrendingUp,
+    tooltip: 'Inversiones: FCI, bonos, acciones, crypto. No cuentan como liquidez pero sí como patrimonio.',
+  },
 };
 
-const accountTypeLabels: Record<AccountType, string> = {
-  bank: 'Bancos',
-  wallet: 'Billeteras Virtuales',
-  cash: 'Efectivo',
-  investment: 'Inversiones',
-  crypto: 'Crypto',
-};
+const SUBTYPE_ORDER: AccountSubtype[] = ['operating', 'reserve', 'liability', 'investment'];
 
 export default function Accounts() {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const isMobile = useIsMobile();
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
 
@@ -74,7 +73,7 @@ export default function Accounts() {
         .from('accounts')
         .select('*')
         .order('created_at', { ascending: false });
-      
+
       if (error) throw error;
       return data as Account[];
     },
@@ -87,16 +86,9 @@ export default function Accounts() {
     try {
       await supabase.rpc('recalculate_all_account_balances', { p_user_id: user.id });
       await queryClient.invalidateQueries({ queryKey: ['accounts'] });
-      toast({
-        title: 'Saldos sincronizados',
-        description: 'Todos los saldos fueron recalculados correctamente.',
-      });
+      toast({ title: 'Saldos sincronizados', description: 'Todos los saldos fueron recalculados.' });
     } catch {
-      toast({
-        title: 'Error',
-        description: 'No se pudieron sincronizar los saldos.',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: 'No se pudieron sincronizar los saldos.', variant: 'destructive' });
     } finally {
       setSyncing(false);
     }
@@ -114,45 +106,34 @@ export default function Accounts() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('accounts')
-        .delete()
-        .eq('id', id);
-      
+      const { error } = await supabase.from('accounts').delete().eq('id', id);
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
-      toast({
-        title: 'Cuenta eliminada',
-        description: 'La cuenta se eliminó correctamente.',
-      });
+      toast({ title: 'Cuenta eliminada' });
     },
     onError: () => {
-      toast({
-        title: 'Error',
-        description: 'No se pudo eliminar la cuenta.',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: 'No se pudo eliminar la cuenta.', variant: 'destructive' });
     },
   });
 
-  // Group accounts by type
-  const groupedAccounts = accounts?.reduce((groups, account) => {
-    const type = account.account_type;
-    if (!groups[type]) groups[type] = [];
-    groups[type].push(account);
+  // Agrupar por subtype
+  const groupedBySubtype = accounts?.reduce((groups, account) => {
+    const subtype = account.account_subtype || 'operating';
+    if (!groups[subtype]) groups[subtype] = [];
+    groups[subtype].push(account);
     return groups;
-  }, {} as Record<AccountType, Account[]>);
+  }, {} as Partial<Record<AccountSubtype, Account[]>>);
 
-  // Calculate totals
-  const totalARS = accounts
-    ?.filter(a => a.currency === 'ARS' && a.is_active)
-    .reduce((sum, a) => sum + Number(a.current_balance), 0) ?? 0;
-  
-  const totalUSD = accounts
-    ?.filter(a => a.currency === 'USD' && a.is_active)
-    .reduce((sum, a) => sum + Number(a.current_balance), 0) ?? 0;
+  // Totales de patrimonio
+  const activeAccounts = accounts?.filter(a => a.is_active) ?? [];
+  const totalARS = activeAccounts
+    .filter(a => a.currency === 'ARS')
+    .reduce((sum, a) => sum + Number(a.current_balance), 0);
+  const totalUSD = activeAccounts
+    .filter(a => a.currency === 'USD')
+    .reduce((sum, a) => sum + Number(a.current_balance), 0);
 
   if (isLoading) {
     return (
@@ -162,194 +143,60 @@ export default function Accounts() {
     );
   }
 
-  // Mobile Layout
-  if (isMobile) {
-    return (
-      <div className="min-h-screen bg-background">
-        <div className="p-4 space-y-6">
-          {/* Totales */}
-          <Card className="glass border-border/50">
-            <CardContent className="p-4">
-              <p className="text-sm text-muted-foreground mb-2">Total disponible</p>
-              <div className="space-y-1">
-                <CurrencyDisplay amount={totalARS} currency="ARS" size="xl" enablePrivacy />
-                {totalUSD > 0 && (
-                  <CurrencyDisplay 
-                    amount={totalUSD} 
-                    currency="USD" 
-                    size="lg" 
-                    className="block text-muted-foreground" 
-                    enablePrivacy
-                  />
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Patrimony Evolution Chart */}
-          <PatrimonyEvolutionChart />
-
-          {/* Lista de cuentas */}
-          {(!accounts || accounts.length === 0) ? (
-            <EmptyState
-              icon={Wallet}
-              title="Sin cuentas"
-              description="Agrega tus cuentas bancarias, billeteras virtuales o efectivo"
-              action={
-                <Link to="/accounts/new">
-                  <Button>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Agregar cuenta
-                  </Button>
-                </Link>
-              }
-            />
-          ) : (
-            <div className="space-y-6">
-              {Object.entries(groupedAccounts || {}).map(([type, typeAccounts]) => {
-                const Icon = accountTypeIcons[type as AccountType];
-                const label = accountTypeLabels[type as AccountType];
-                
-                return (
-                  <div key={type}>
-                    <div className="flex items-center gap-2 mb-3">
-                      <Icon className="h-4 w-4 text-muted-foreground" />
-                      <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{label}</h3>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      {typeAccounts.map((account) => (
-                        <Card 
-                          key={account.id}
-                          className="glass border-border/50"
-                          style={{ borderLeftColor: account.color || '#6366f1', borderLeftWidth: '3px' }}
-                        >
-                          <CardContent className="p-4 flex items-center justify-between">
-                            <Link to={`/accounts/${account.id}`} className="flex-1">
-                              <div>
-                                <p className="font-medium text-foreground">{account.name}</p>
-                                {account.alias && (
-                                  <p className="text-xs text-muted-foreground font-mono">{account.alias}</p>
-                                )}
-                              </div>
-                            </Link>
-                            
-                            <div className="flex items-center gap-2">
-                              <CurrencyDisplay 
-                                amount={Number(account.current_balance)} 
-                                currency={account.currency}
-                                size="md"
-                                enablePrivacy
-                              />
-                              
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" size="icon">
-                                    <MoreVertical className="h-4 w-4" />
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                  <DropdownMenuItem asChild>
-                                    <Link to={`/accounts/${account.id}/edit`}>
-                                      <Pencil className="h-4 w-4 mr-2" />
-                                      Editar
-                                    </Link>
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem 
-                                    className="text-destructive"
-                                    onClick={() => setDeleteId(account.id)}
-                                  >
-                                    <Trash2 className="h-4 w-4 mr-2" />
-                                    Eliminar
-                                  </DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>¿Eliminar cuenta?</AlertDialogTitle>
-              <AlertDialogDescription>
-                Esta acción no se puede deshacer. Se eliminarán también todos los movimientos asociados.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancelar</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={() => {
-                  if (deleteId) deleteMutation.mutate(deleteId);
-                  setDeleteId(null);
-                }}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              >
-                Eliminar
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-      </div>
-    );
-  }
-
-  // Desktop Layout - Like HTML template
   return (
     <div className="min-h-screen bg-background">
-      <PageHeader 
-        title="Mis Cuentas" 
-        subtitle="Gestiona tus disponibilidades y saldos iniciales"
+      <PageHeader
+        title="Mis Cuentas"
+        subtitle="Tus disponibilidades, ahorros y tarjetas"
         action={
           <div className="flex items-center gap-2">
             <Button variant="outline" className="rounded-full" onClick={syncAllBalances} disabled={syncing}>
               <RefreshCw className={`h-4 w-4 mr-2 ${syncing ? 'animate-spin' : ''}`} />
-              Sincronizar
+              <span className="hidden sm:inline">Sincronizar</span>
             </Button>
             <Link to="/accounts/new">
               <Button className="rounded-full">
                 <Plus className="h-4 w-4 mr-2" />
-                Nueva Cuenta
+                <span className="hidden sm:inline">Nueva Cuenta</span>
               </Button>
             </Link>
           </div>
         }
       />
 
-      <div className="p-6">
-        <div className="max-w-6xl mx-auto space-y-8">
-          {/* Summary Cards - grid like template */}
-          <div className="grid grid-cols-2 gap-6">
-            <Card className="glass border-border/50 bg-gradient-to-br from-card to-primary/5">
-              <CardContent className="p-6">
-                <p className="text-sm text-muted-foreground mb-2">Patrimonio Neto (ARS)</p>
+      <div className="p-4 md:p-6">
+        <div className="max-w-6xl mx-auto space-y-6 md:space-y-8">
+          {/* Patrimonio */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
+            <Card className="border-border/50 bg-gradient-to-br from-card to-primary/5">
+              <CardContent className="p-4 md:p-6">
+                <div className="flex items-center gap-2 mb-2">
+                  <p className="text-sm text-muted-foreground">Patrimonio Neto (ARS)</p>
+                  <HelpTooltip text="Es lo que realmente tenés. Sumamos el dinero en todas tus cuentas (operativas y de ahorro) y le restamos lo que debés en tarjetas." />
+                </div>
                 <CurrencyDisplay amount={totalARS} currency="ARS" size="xl" className="font-extrabold" enablePrivacy />
               </CardContent>
             </Card>
-            <Card className="glass border-border/50 border-l-4 border-l-income">
-              <CardContent className="p-6">
-                <p className="text-sm text-muted-foreground mb-2">Patrimonio Neto (USD MEP)</p>
+            <Card className="border-border/50 border-l-4 border-l-income">
+              <CardContent className="p-4 md:p-6">
+                <div className="flex items-center gap-2 mb-2">
+                  <p className="text-sm text-muted-foreground">Patrimonio Neto (USD)</p>
+                  <HelpTooltip text="Tus activos en dólares. No se convierte automáticamente; cada moneda se muestra por separado." />
+                </div>
                 <CurrencyDisplay amount={totalUSD} currency="USD" size="xl" className="font-extrabold" enablePrivacy />
               </CardContent>
             </Card>
           </div>
 
-          {/* Patrimony Evolution Chart */}
+          {/* Evolución patrimonial */}
           <PatrimonyEvolutionChart />
 
+          {/* Grupos de cuentas */}
           {(!accounts || accounts.length === 0) ? (
             <EmptyState
               icon={Wallet}
               title="Sin cuentas"
-              description="Agrega tus cuentas bancarias, billeteras virtuales o efectivo"
+              description="Agrega tus cuentas bancarias, billeteras, tarjetas o inversiones para empezar"
               action={
                 <Link to="/accounts/new">
                   <Button>
@@ -360,96 +207,22 @@ export default function Accounts() {
               }
             />
           ) : (
-            <div className="space-y-8">
-              {Object.entries(groupedAccounts || {}).map(([type, typeAccounts]) => {
-                const Icon = accountTypeIcons[type as AccountType];
-                const label = accountTypeLabels[type as AccountType];
-                
+            <div className="space-y-6 md:space-y-8">
+              {SUBTYPE_ORDER.map((subtype) => {
+                const config = SUBTYPE_CONFIG[subtype];
+                const groupAccounts = groupedBySubtype?.[subtype] ?? [];
+
                 return (
-                  <div key={type}>
-                    <div className="flex items-center gap-2 mb-4">
-                      <Icon className="h-4 w-4 text-muted-foreground" />
-                      <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{label}</h3>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      {typeAccounts.map((account) => {
-                        const isUSD = account.currency === 'USD';
-                        return (
-                          <Card 
-                            key={account.id}
-                            className={`glass border-border/50 hover:border-primary/50 transition-all hover:scale-[1.01] ${
-                              isUSD ? 'border-l-4 border-l-income' : ''
-                            }`}
-                          >
-                            <CardContent className="p-4">
-                              <div className="grid grid-cols-[50px_2fr_1fr_1fr_150px] items-center gap-4">
-                                {/* Icon */}
-                                <div className="w-10 h-10 rounded-xl bg-secondary/50 flex items-center justify-center">
-                                  <Icon className="h-5 w-5 text-primary" />
-                                </div>
-                                
-                                {/* Info */}
-                                <Link to={`/accounts/${account.id}`} className="flex-1">
-                                  <h4 className="font-medium">{account.name}</h4>
-                                  <p className="text-sm text-muted-foreground font-mono">
-                                    {account.cbu_cvu ? `CBU: ${account.cbu_cvu.slice(0, 10)}...` : account.alias || 'Sin alias'}
-                                  </p>
-                                </Link>
-                                
-                                {/* Balance */}
-                                <div className="text-right font-bold pr-8">
-                                  <CurrencyDisplay 
-                                    amount={Number(account.current_balance)} 
-                                    currency={account.currency}
-                                    size="md"
-                                    enablePrivacy
-                                  />
-                                </div>
-                                
-                                {/* USD Equivalent */}
-                                <div className="text-sm text-muted-foreground">
-                                  {account.currency === 'ARS' ? (
-                                    `≈ US$ ${(Number(account.current_balance) / 1200).toFixed(2)}`
-                                  ) : (
-                                    <span className="text-income">$ {(Number(account.current_balance) * 1200).toLocaleString('es-AR')}</span>
-                                  )}
-                                </div>
-                                
-                                {/* Actions */}
-                                <div className="flex items-center justify-end gap-2">
-                                  <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg" title="Sincronizar Saldo" onClick={() => syncSingleAccount(account.id)}>
-                                    <RefreshCw className="h-4 w-4" />
-                                  </Button>
-                                  <Link to={`/accounts/${account.id}/edit`}>
-                                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg">
-                                      <Pencil className="h-4 w-4" />
-                                    </Button>
-                                  </Link>
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg">
-                                        <MoreVertical className="h-4 w-4" />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                      <DropdownMenuItem 
-                                        className="text-destructive"
-                                        onClick={() => setDeleteId(account.id)}
-                                      >
-                                        <Trash2 className="h-4 w-4 mr-2" />
-                                        Eliminar
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
-                                </div>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        );
-                      })}
-                    </div>
-                  </div>
+                  <AccountGroupSection
+                    key={subtype}
+                    title={config.label}
+                    tooltip={config.tooltip}
+                    icon={config.icon}
+                    accounts={groupAccounts}
+                    subtype={subtype}
+                    onDelete={setDeleteId}
+                    onSync={syncSingleAccount}
+                  />
                 );
               })}
             </div>

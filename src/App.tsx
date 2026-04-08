@@ -26,6 +26,8 @@ import Reports from "./pages/Reports";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 import OAuthInitiate from "./pages/auth/OAuthInitiate";
+import CardDetail from "./pages/cards/CardDetail";
+import NewPurchase from "./pages/cards/NewPurchase";
 
 const queryClient = new QueryClient();
 
@@ -62,6 +64,8 @@ const AppRoutes = () => (
       <Route path="/accounts/new" element={<NewAccount />} />
       <Route path="/accounts/:id" element={<AccountDetail />} />
       <Route path="/accounts/:id/edit" element={<EditAccount />} />
+      <Route path="/cards/:id" element={<CardDetail />} />
+      <Route path="/cards/:id/purchase/new" element={<NewPurchase />} />
       <Route path="/transactions" element={<Transactions />} />
       <Route path="/transactions/new" element={<NewTransaction />} />
       <Route path="/transactions/:id" element={<TransactionDetail />} />
