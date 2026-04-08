@@ -23,7 +23,8 @@ import NewTransaction from "./pages/transactions/NewTransaction";
 import TransactionDetail from "./pages/transactions/TransactionDetail";
 import EditTransaction from "./pages/transactions/EditTransaction";
 import Categories from "./pages/Categories";
-import RecurringExpenses from "./pages/expenses/RecurringExpenses";
+import Expenses from "./pages/expenses/Expenses";
+import Recurring from "./pages/expenses/Recurring";
 import Reports from "./pages/Reports";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
@@ -88,7 +89,8 @@ const AppRoutes = () => (
       <Route path="/transactions/:id" element={<TransactionDetail />} />
       <Route path="/transactions/:id/edit" element={<EditTransaction />} />
       <Route path="/categories" element={<Categories />} />
-      <Route path="/expenses" element={<RecurringExpenses />} />
+      <Route path="/expenses" element={<Expenses />} />
+      <Route path="/expenses/recurring" element={<Recurring />} />
       <Route path="/planning" element={<Planning />} />
       <Route path="/reports" element={<Reports />} />
       <Route path="/profile" element={<Profile />} />
