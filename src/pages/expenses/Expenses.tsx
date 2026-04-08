@@ -310,7 +310,7 @@ export default function Expenses() {
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
                     <XAxis type="number" tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
                     <YAxis type="category" dataKey="name" width={70} tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
-                    <RechartsTooltip formatter={(value: number) => formatCurrency(value, currency)} contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }} />
+                    <RechartsTooltip formatter={(value: number) => formatCurrency(value, currency)} contentStyle={{ backgroundColor: 'hsl(var(--card))', color: 'hsl(var(--card-foreground))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }} itemStyle={{ color: 'hsl(var(--card-foreground))' }} labelStyle={{ color: 'hsl(var(--muted-foreground))' }} />
                     <Bar dataKey="value" radius={[0, 6, 6, 0]} barSize={28}>
                       {[
                         { fill: 'hsl(145, 70%, 45%)' },
@@ -375,7 +375,9 @@ export default function Expenses() {
                           </Pie>
                           <RechartsTooltip
                             formatter={(value: number, name: string) => [formatCurrency(value, currency), name]}
-                            contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
+                            contentStyle={{ backgroundColor: 'hsl(var(--card))', color: 'hsl(var(--card-foreground))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }}
+                            itemStyle={{ color: 'hsl(var(--card-foreground))' }}
+                            labelStyle={{ color: 'hsl(var(--muted-foreground))' }}
                           />
                         </PieChart>
                       </ResponsiveContainer>
