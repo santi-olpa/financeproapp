@@ -9,6 +9,7 @@ import {
   ArrowLeftRight,
   ShoppingBag,
   Sparkles,
+  FileCheck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -21,6 +22,7 @@ const actions = [
   { icon: TrendingUp, label: 'Ingreso', path: '/transactions/new?type=income', color: 'bg-income text-white' },
   { icon: ArrowLeftRight, label: 'Transferencia', path: '/transactions/new?type=transfer', color: 'bg-warning text-white' },
   { icon: ShoppingBag, label: 'Cuotas', path: '/purchases/new', color: 'bg-primary text-white' },
+  { icon: FileCheck, label: 'Cheque', path: '/accounts?newCheck=1', color: 'bg-amber-600 text-white' },
 ];
 
 export function MobileFAB({ onAiClick }: MobileFABProps) {

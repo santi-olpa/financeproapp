@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -31,8 +32,19 @@ export function PendingEventsGroup() {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+
+  // Abrir formulario si viene ?newCheck=1 desde el FAB
+  useEffect(() => {
+    if (searchParams.get('newCheck') === '1') {
+      setFormOpen(true);
+      setIsCollapsed(false);
+      searchParams.delete('newCheck');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   // Form state
   const [direction, setDirection] = useState<'in' | 'out'>('in');
@@ -153,7 +165,7 @@ export function PendingEventsGroup() {
     setCategoryId(''); setNotes('');
   };
 
-  if (events.length === 0) return null;
+  // Siempre visible: header con botón + Nuevo aunque no haya cheques
 
   const received = events.filter(e => e.direction === 'in');
   const issued = events.filter(e => e.direction === 'out');
