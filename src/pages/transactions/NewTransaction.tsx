@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -10,7 +10,6 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { useToast } from '@/hooks/use-toast';
-import { Card, CardContent } from '@/components/ui/card';
 import {
   Select,
   SelectContent,
@@ -18,15 +17,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { TrendingUp, TrendingDown, ArrowLeftRight, Info, Sparkles } from 'lucide-react';
-import type { TransactionType, Currency, Account, Category } from '@/types/finance';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { formatCurrency } from '@/lib/format';
-import { addMonths, format } from 'date-fns';
+import { TrendingUp, TrendingDown, ArrowLeftRight, Sparkles } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import type { TransactionType, Currency, Account, Category } from '@/types/finance';
 
-// Type for AI-parsed state
-interface AiParsedState {
+type AiParsedState = {
   aiParsed?: boolean;
   amount?: number;
   currency?: Currency;
@@ -36,19 +32,22 @@ interface AiParsedState {
   categoryId?: string | null;
   sourceAccountId?: string | null;
   destinationAccountId?: string | null;
-}
+};
 
 export default function NewTransaction() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Get AI-parsed data from navigation state
   const aiState = (location.state as AiParsedState) || {};
+  const urlType = searchParams.get('type') as TransactionType | null;
 
-  const [transactionType, setTransactionType] = useState<TransactionType>(aiState.type || 'expense');
+  const [transactionType, setTransactionType] = useState<TransactionType>(
+    aiState.type || urlType || 'expense',
+  );
   const [amount, setAmount] = useState(aiState.amount?.toString() || '');
   const [currency, setCurrency] = useState<Currency>(aiState.currency || 'ARS');
   const [description, setDescription] = useState(aiState.description || '');
@@ -58,25 +57,16 @@ export default function NewTransaction() {
   const [destinationAccountId, setDestinationAccountId] = useState(aiState.destinationAccountId || '');
   const [transactionDate, setTransactionDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
-  
-  // Installments state
-  const [hasInstallments, setHasInstallments] = useState(false);
-  const [totalInstallments, setTotalInstallments] = useState('');
-  const [interestRate, setInterestRate] = useState('0');
+  const [prefilledByAi] = useState(aiState.aiParsed || false);
 
-  // Track if prefilled by AI
-  const [prefilledByAi, setPrefilledByAi] = useState(aiState.aiParsed || false);
-
-  // Clear navigation state after reading to prevent re-triggering
   useEffect(() => {
     if (aiState.aiParsed) {
       window.history.replaceState({}, document.title);
     }
   }, [aiState.aiParsed]);
 
-  // Fetch accounts
   const { data: accounts } = useQuery({
-    queryKey: ['accounts'],
+    queryKey: ['accounts', 'active'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('accounts')
@@ -89,135 +79,63 @@ export default function NewTransaction() {
     enabled: !!user,
   });
 
-  // Fetch categories
+  // No mostrar tarjetas como cuentas para ingreso/egreso directo
+  const selectableAccounts = accounts?.filter((a) =>
+    transactionType === 'transfer' ? true : a.account_type !== 'credit_card',
+  );
+
   const { data: categories } = useQuery({
     queryKey: ['categories'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('categories')
-        .select('*')
-        .order('name');
+      const { data, error } = await supabase.from('categories').select('*').order('display_order');
       if (error) throw error;
       return data as Category[];
     },
     enabled: !!user,
   });
 
-  const filteredCategories = categories?.filter(c => 
-    transactionType === 'income' ? c.category_type === 'income' : c.category_type === 'expense'
+  const filteredCategories = categories?.filter((c) =>
+    transactionType === 'income' ? c.category_type === 'income' : c.category_type === 'expense',
   );
-
-  // Calculate installment details
-  const installmentDetails = useMemo(() => {
-    const parsedAmount = parseFloat(amount) || 0;
-    const numInstallments = parseInt(totalInstallments) || 1;
-    const interest = parseFloat(interestRate) || 0;
-    
-    if (parsedAmount <= 0 || numInstallments < 1) return null;
-    
-    // Total with interest
-    const totalWithInterest = parsedAmount * (1 + interest / 100);
-    const installmentAmount = totalWithInterest / numInstallments;
-    
-    return {
-      originalAmount: parsedAmount,
-      totalWithInterest,
-      installmentAmount,
-      numInstallments,
-      interestAmount: totalWithInterest - parsedAmount,
-    };
-  }, [amount, totalInstallments, interestRate]);
 
   const createMutation = useMutation({
     mutationFn: async () => {
       const parsedAmount = parseFloat(amount);
-      if (isNaN(parsedAmount) || parsedAmount <= 0) {
-        throw new Error('Monto inválido');
+      if (isNaN(parsedAmount) || parsedAmount <= 0) throw new Error('Monto inválido');
+
+      const txData: Record<string, unknown> = {
+        user_id: user!.id,
+        transaction_type: transactionType,
+        amount: parsedAmount,
+        currency,
+        description: description || null,
+        transaction_date: transactionDate,
+        notes: notes || null,
+      };
+
+      if (transactionType === 'transfer') {
+        txData.source_account_id = sourceAccountId;
+        txData.destination_account_id = destinationAccountId;
+      } else {
+        txData.account_id = accountId;
+        txData.category_id = categoryId || null;
       }
 
-      const baseDate = new Date(transactionDate);
+      const { error } = await supabase.from('transactions').insert(txData);
+      if (error) throw error;
 
-      if (hasInstallments && installmentDetails) {
-        // Create individual transactions for each installment
-        const installmentPromises = [];
-        
-        for (let i = 0; i < installmentDetails.numInstallments; i++) {
-          const dueDate = addMonths(baseDate, i);
-          
-          const transactionData: any = {
-            user_id: user!.id,
-            transaction_type: transactionType,
-            amount: installmentDetails.installmentAmount,
-            currency,
-            description: description ? `${description} (${i + 1}/${installmentDetails.numInstallments})` : `Cuota ${i + 1}/${installmentDetails.numInstallments}`,
-            transaction_date: format(dueDate, 'yyyy-MM-dd'),
-            notes: notes || null,
-            has_installments: true,
-            total_installments: installmentDetails.numInstallments,
-            current_installment: i + 1,
-            account_id: accountId,
-            category_id: categoryId || null,
-          };
-
-          installmentPromises.push(
-            supabase.from('transactions').insert(transactionData)
-          );
-        }
-
-        const results = await Promise.all(installmentPromises);
-        const errors = results.filter(r => r.error);
-        if (errors.length > 0) throw errors[0].error;
-
-        // Recalculate account balance from DB
-        if (accountId) {
-          await supabase.rpc('recalculate_account_balance', { p_account_id: accountId });
-        }
-      } else {
-        // Normal single transaction
-        const transactionData: any = {
-          user_id: user!.id,
-          transaction_type: transactionType,
-          amount: parsedAmount,
-          currency,
-          description: description || null,
-          transaction_date: transactionDate,
-          notes: notes || null,
-          has_installments: false,
-        };
-
-        if (transactionType === 'transfer') {
-          transactionData.source_account_id = sourceAccountId;
-          transactionData.destination_account_id = destinationAccountId;
-        } else {
-          transactionData.account_id = accountId;
-          transactionData.category_id = categoryId || null;
-        }
-
-        const { error } = await supabase.from('transactions').insert(transactionData);
-        if (error) throw error;
-
-        // Recalculate affected account balances from DB
-        if (transactionType === 'transfer') {
-          if (sourceAccountId) {
-            await supabase.rpc('recalculate_account_balance', { p_account_id: sourceAccountId });
-          }
-          if (destinationAccountId) {
-            await supabase.rpc('recalculate_account_balance', { p_account_id: destinationAccountId });
-          }
-        } else if (accountId) {
-          await supabase.rpc('recalculate_account_balance', { p_account_id: accountId });
-        }
+      // Recalcular saldos
+      if (transactionType === 'transfer') {
+        if (sourceAccountId) await supabase.rpc('recalculate_account_balance', { p_account_id: sourceAccountId });
+        if (destinationAccountId) await supabase.rpc('recalculate_account_balance', { p_account_id: destinationAccountId });
+      } else if (accountId) {
+        await supabase.rpc('recalculate_account_balance', { p_account_id: accountId });
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['accounts'] });
-      toast({
-        title: 'Movimiento registrado',
-        description: hasInstallments 
-          ? `Se crearon ${installmentDetails?.numInstallments} cuotas correctamente.`
-          : 'El movimiento se guardó correctamente.',
-      });
+      toast({ title: 'Movimiento registrado' });
       navigate('/transactions');
     },
     onError: (error) => {
@@ -231,28 +149,23 @@ export default function NewTransaction() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
     if (!amount || parseFloat(amount) <= 0) {
-      toast({ title: 'Error', description: 'Ingresa un monto válido.', variant: 'destructive' });
+      toast({ title: 'Error', description: 'Ingresá un monto válido.', variant: 'destructive' });
       return;
     }
-
     if (transactionType === 'transfer') {
       if (!sourceAccountId || !destinationAccountId) {
-        toast({ title: 'Error', description: 'Selecciona las cuentas de origen y destino.', variant: 'destructive' });
+        toast({ title: 'Error', description: 'Seleccioná cuentas de origen y destino.', variant: 'destructive' });
         return;
       }
       if (sourceAccountId === destinationAccountId) {
         toast({ title: 'Error', description: 'Las cuentas deben ser diferentes.', variant: 'destructive' });
         return;
       }
-    } else {
-      if (!accountId) {
-        toast({ title: 'Error', description: 'Selecciona una cuenta.', variant: 'destructive' });
-        return;
-      }
+    } else if (!accountId) {
+      toast({ title: 'Error', description: 'Seleccioná una cuenta.', variant: 'destructive' });
+      return;
     }
-
     createMutation.mutate();
   };
 
@@ -261,73 +174,59 @@ export default function NewTransaction() {
       <PageHeader title="Nuevo Movimiento" showBack />
 
       <form onSubmit={handleSubmit} className="p-4 space-y-6 max-w-lg mx-auto">
-        {/* AI Prefilled indicator */}
         {prefilledByAi && (
           <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/10 border border-primary/20">
             <Sparkles className="h-4 w-4 text-primary" />
-            <span className="text-sm text-primary">
-              Pre-llenado por el Asistente IA. Verificá y ajustá si es necesario.
-            </span>
+            <span className="text-sm text-primary">Pre-llenado por el Asistente IA. Verificá y ajustá si es necesario.</span>
             <Badge variant="secondary" className="ml-auto">IA</Badge>
           </div>
         )}
 
-        {/* Tipo de transacción */}
+        {/* Tipo */}
         <Tabs value={transactionType} onValueChange={(v) => setTransactionType(v as TransactionType)}>
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="expense" className="flex items-center gap-2">
-              <TrendingDown className="h-4 w-4" />
-              Egreso
+              <TrendingDown className="h-4 w-4" /> Egreso
             </TabsTrigger>
             <TabsTrigger value="income" className="flex items-center gap-2">
-              <TrendingUp className="h-4 w-4" />
-              Ingreso
+              <TrendingUp className="h-4 w-4" /> Ingreso
             </TabsTrigger>
             <TabsTrigger value="transfer" className="flex items-center gap-2">
-              <ArrowLeftRight className="h-4 w-4" />
-              Transf.
+              <ArrowLeftRight className="h-4 w-4" /> Transf.
             </TabsTrigger>
           </TabsList>
         </Tabs>
 
-        {/* Monto */}
+        {/* Monto + moneda */}
         <div className="space-y-2">
           <Label>Monto</Label>
           <div className="flex gap-2">
-            <div className="flex-1">
-              <Input
-                type="number"
-                step="0.01"
-                placeholder="0.00"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className="text-2xl font-mono h-14"
-                required
-              />
-            </div>
+            <Input
+              type="number"
+              step="0.01"
+              placeholder="0.00"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="text-2xl font-mono h-14 flex-1"
+              required
+            />
             <div className="flex">
-              <button
-                type="button"
-                onClick={() => setCurrency('ARS')}
-                className={`px-4 rounded-l-lg border transition-colors ${
-                  currency === 'ARS' 
-                    ? 'bg-primary text-primary-foreground border-primary' 
-                    : 'bg-card border-border text-muted-foreground'
-                }`}
-              >
-                ARS
-              </button>
-              <button
-                type="button"
-                onClick={() => setCurrency('USD')}
-                className={`px-4 rounded-r-lg border-y border-r transition-colors ${
-                  currency === 'USD' 
-                    ? 'bg-primary text-primary-foreground border-primary' 
-                    : 'bg-card border-border text-muted-foreground'
-                }`}
-              >
-                USD
-              </button>
+              {(['ARS', 'USD'] as Currency[]).map((cur, i) => (
+                <button
+                  key={cur}
+                  type="button"
+                  onClick={() => setCurrency(cur)}
+                  className={`px-4 border transition-colors ${
+                    i === 0 ? 'rounded-l-lg' : 'rounded-r-lg border-l-0'
+                  } ${
+                    currency === cur
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-card border-border text-muted-foreground'
+                  }`}
+                >
+                  {cur}
+                </button>
+              ))}
             </div>
           </div>
         </div>
@@ -338,14 +237,10 @@ export default function NewTransaction() {
             <div className="space-y-2">
               <Label>Cuenta origen</Label>
               <Select value={sourceAccountId} onValueChange={setSourceAccountId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar cuenta" />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
                 <SelectContent>
-                  {accounts?.map((account) => (
-                    <SelectItem key={account.id} value={account.id}>
-                      {account.name} ({account.currency})
-                    </SelectItem>
+                  {selectableAccounts?.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>{a.name} ({a.currency})</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -353,14 +248,10 @@ export default function NewTransaction() {
             <div className="space-y-2">
               <Label>Cuenta destino</Label>
               <Select value={destinationAccountId} onValueChange={setDestinationAccountId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar cuenta" />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
                 <SelectContent>
-                  {accounts?.map((account) => (
-                    <SelectItem key={account.id} value={account.id}>
-                      {account.name} ({account.currency})
-                    </SelectItem>
+                  {selectableAccounts?.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>{a.name} ({a.currency})</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -370,14 +261,10 @@ export default function NewTransaction() {
           <div className="space-y-2">
             <Label>Cuenta</Label>
             <Select value={accountId} onValueChange={setAccountId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Seleccionar cuenta" />
-              </SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="Seleccionar cuenta" /></SelectTrigger>
               <SelectContent>
-                {accounts?.map((account) => (
-                  <SelectItem key={account.id} value={account.id}>
-                    {account.name} ({account.currency})
-                  </SelectItem>
+                {selectableAccounts?.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>{a.name} ({a.currency})</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -389,14 +276,10 @@ export default function NewTransaction() {
           <div className="space-y-2">
             <Label>Categoría</Label>
             <Select value={categoryId} onValueChange={setCategoryId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Seleccionar categoría" />
-              </SelectTrigger>
+              <SelectTrigger><SelectValue placeholder="Seleccionar categoría" /></SelectTrigger>
               <SelectContent>
-                {filteredCategories?.map((category) => (
-                  <SelectItem key={category.id} value={category.id}>
-                    {category.name}
-                  </SelectItem>
+                {filteredCategories?.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -423,80 +306,6 @@ export default function NewTransaction() {
           />
         </div>
 
-        {/* Cuotas (solo para egresos) */}
-        {transactionType === 'expense' && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="installments"
-                checked={hasInstallments}
-                onChange={(e) => setHasInstallments(e.target.checked)}
-                className="rounded border-border"
-              />
-              <Label htmlFor="installments">Pago en cuotas</Label>
-            </div>
-            
-            {hasInstallments && (
-              <Card className="border-primary/20 bg-primary/5">
-                <CardContent className="p-4 space-y-4">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label>Cantidad de cuotas</Label>
-                      <Input
-                        type="number"
-                        min="2"
-                        max="48"
-                        placeholder="12"
-                        value={totalInstallments}
-                        onChange={(e) => setTotalInstallments(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Interés total (%)</Label>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.1"
-                        placeholder="0"
-                        value={interestRate}
-                        onChange={(e) => setInterestRate(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  
-                  {installmentDetails && installmentDetails.numInstallments > 1 && (
-                    <div className="pt-3 border-t border-border/50 space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Monto original:</span>
-                        <span>{formatCurrency(installmentDetails.originalAmount, currency)}</span>
-                      </div>
-                      {installmentDetails.interestAmount > 0 && (
-                        <div className="flex justify-between text-warning">
-                          <span>Interés:</span>
-                          <span>+{formatCurrency(installmentDetails.interestAmount, currency)}</span>
-                        </div>
-                      )}
-                      <div className="flex justify-between font-medium">
-                        <span className="text-muted-foreground">Total a pagar:</span>
-                        <span>{formatCurrency(installmentDetails.totalWithInterest, currency)}</span>
-                      </div>
-                      <div className="flex justify-between text-primary font-semibold pt-2 border-t border-border/50">
-                        <span>Valor de cada cuota:</span>
-                        <span>{formatCurrency(installmentDetails.installmentAmount, currency)}</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground flex items-center gap-1 mt-2">
-                        <Info className="h-3 w-3" />
-                        Se crearán {installmentDetails.numInstallments} movimientos mensuales
-                      </p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        )}
-
         {/* Notas */}
         <div className="space-y-2">
           <Label>Notas (opcional)</Label>
@@ -508,11 +317,7 @@ export default function NewTransaction() {
           />
         </div>
 
-        <Button 
-          type="submit" 
-          className="w-full" 
-          disabled={createMutation.isPending}
-        >
+        <Button type="submit" className="w-full" disabled={createMutation.isPending}>
           {createMutation.isPending ? <LoadingSpinner size="sm" /> : 'Guardar movimiento'}
         </Button>
       </form>

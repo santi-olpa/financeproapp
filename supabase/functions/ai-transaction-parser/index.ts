@@ -33,27 +33,14 @@ serve(async (req) => {
       );
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
-    
-    if (claimsError || !claimsData?.claims) {
-      return new Response(
-        JSON.stringify({ error: "Token inválido" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    // La validación JWT la hace Supabase a nivel gateway.
+    // Acá solo verificamos que haya un token presente.
 
     const { userInput, accounts, categories } = await req.json();
     
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
+    if (!GEMINI_API_KEY) {
+      throw new Error("GEMINI_API_KEY is not configured");
     }
 
     // Build context for grounding
@@ -67,120 +54,80 @@ serve(async (req) => {
       .map(c => `"${c.name}"`)
       .join(", ");
 
-    const systemPrompt = `Eres un asistente financiero inteligente para una aplicación de finanzas personales en Argentina. 
-Tu única tarea es interpretar frases del usuario sobre movimientos financieros y extraer datos estructurados.
+    const systemPrompt = `Sos un asistente financiero para una app de finanzas personales en Argentina.
+Tu ÚNICA tarea es interpretar frases en español argentino sobre movimientos de plata y extraer datos estructurados.
 
 CONTEXTO DEL USUARIO:
-- Cuentas disponibles: ${accountNames}
+- Cuentas: ${accountNames}
 - Categorías de gasto: ${expenseCategories}
 - Categorías de ingreso: ${incomeCategories}
 
-REGLAS IMPORTANTES:
-1. Si el usuario menciona un gasto/egreso, el tipo es "expense"
-2. Si el usuario menciona un ingreso/cobro/pago recibido, el tipo es "income"
-3. Si el usuario menciona transferencia entre cuentas, el tipo es "transfer"
-4. Mapea los nombres de cuentas y categorías a las opciones disponibles del usuario
-5. Si no puedes determinar la cuenta, usa null
-6. Si no puedes determinar la categoría, intenta inferirla del contexto o usa null
-7. La moneda por defecto es ARS, a menos que el usuario mencione dólares/USD/US$
-8. Si el usuario dice "Mercado Pago", "MP", "uala", "Ualá" busca la cuenta que coincida
-9. Interpreta modismos argentinos: "luca" = 1000, "palo" = 1.000.000, "mango" = peso
+REGLAS:
+1. Gasto/egreso/compré/pagué/gasté → type "expense"
+2. Cobré/me pagaron/me transfirieron/ingreso/sueldo → type "income"
+3. Pasé plata/transferí entre cuentas propias → type "transfer"
+4. Mapeá cuentas y categorías a las disponibles. Si dice "MP" = Mercado Pago, "uala"/"Ualá" = Ualá, "galicia"/"banco" = buscar coincidencia.
+5. Moneda default ARS salvo que diga "dólares", "USD", "US$", "verdes".
+6. Modismos argentinos: "luca" = 1000, "dos lucas" = 2000, "palo" = 1.000.000, "mango" = peso, "gamba" = 100.
+7. "super"/"súper" = Supermercado, "delivery"/"pedidos ya"/"rappi" = Restaurantes y delivery, "uber"/"taxi"/"bondi"/"sube" = Transporte, "luz"/"gas"/"agua" = Servicios.
+8. Si dice "en 3 cuotas" o "en cuotas", igual extraé el monto total y type expense. Las cuotas se manejan aparte.
+9. Números: "quince mil" = 15000, "5k" = 5000, "medio palo" = 500000.
+10. Si no podés determinar cuenta o categoría, usá null.
 
-Responde SOLO con la función createTransaction y los parámetros extraídos.`;
+Respondé SOLO con la función createTransaction.`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userInput },
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "createTransaction",
-              description: "Crea una transacción financiera con los datos extraídos de la frase del usuario",
-              parameters: {
-                type: "object",
-                properties: {
-                  amount: {
-                    type: "number",
-                    description: "El monto de la transacción en número. Ej: 15000 para 'quince mil'"
-                  },
-                  currency: {
-                    type: "string",
-                    enum: ["ARS", "USD"],
-                    description: "La moneda de la transacción. Por defecto ARS"
-                  },
-                  type: {
-                    type: "string",
-                    enum: ["income", "expense", "transfer"],
-                    description: "El tipo de transacción"
-                  },
-                  description: {
-                    type: "string",
-                    description: "Descripción breve del movimiento. Ej: 'Supermercado', 'Sueldo', 'Uber'"
-                  },
-                  accountName: {
-                    type: "string",
-                    description: "El nombre de la cuenta mencionada por el usuario. Debe coincidir con una de las cuentas disponibles"
-                  },
-                  categoryName: {
-                    type: "string",
-                    description: "El nombre de la categoría inferida. Debe coincidir con una de las categorías disponibles"
-                  },
-                  sourceAccountName: {
-                    type: "string",
-                    description: "Para transferencias: cuenta de origen"
-                  },
-                  destinationAccountName: {
-                    type: "string",
-                    description: "Para transferencias: cuenta de destino"
-                  }
-                },
-                required: ["amount", "type"],
-                additionalProperties: false
-              }
-            }
-          }
-        ],
-        tool_choice: { type: "function", function: { name: "createTransaction" } }
+        system_instruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ role: "user", parts: [{ text: userInput }] }],
+        tools: [{
+          function_declarations: [{
+            name: "createTransaction",
+            description: "Crea una transacción financiera con los datos extraídos",
+            parameters: {
+              type: "OBJECT",
+              properties: {
+                amount: { type: "NUMBER", description: "Monto numérico. Ej: 15000" },
+                currency: { type: "STRING", enum: ["ARS", "USD"], description: "Moneda (default ARS)" },
+                type: { type: "STRING", enum: ["income", "expense", "transfer"], description: "Tipo" },
+                description: { type: "STRING", description: "Descripción breve" },
+                accountName: { type: "STRING", description: "Cuenta del usuario" },
+                categoryName: { type: "STRING", description: "Categoría inferida" },
+                sourceAccountName: { type: "STRING", description: "Cuenta origen (transfers)" },
+                destinationAccountName: { type: "STRING", description: "Cuenta destino (transfers)" },
+              },
+              required: ["amount", "type"],
+            },
+          }],
+        }],
+        tool_config: { function_calling_config: { mode: "ANY", allowed_function_names: ["createTransaction"] } },
       }),
     });
 
     if (!response.ok) {
       if (response.status === 429) {
         return new Response(
-          JSON.stringify({ error: "Límite de uso excedido. Intenta de nuevo en unos segundos." }),
+          JSON.stringify({ error: "Límite de uso excedido. Intentá de nuevo en unos segundos." }),
           { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      if (response.status === 402) {
-        return new Response(
-          JSON.stringify({ error: "Créditos de IA agotados. Contacta al administrador." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
       const errorText = await response.text();
-      console.error("AI gateway error:", response.status, errorText);
-      throw new Error(`AI gateway error: ${response.status}`);
+      console.error("Gemini API error:", response.status, errorText);
+      throw new Error(`Gemini API error: ${response.status}`);
     }
 
     const data = await response.json();
-    
-    // Extract the function call result
-    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall || toolCall.function.name !== "createTransaction") {
+
+    // Gemini native format: candidates[0].content.parts[0].functionCall
+    const functionCall = data.candidates?.[0]?.content?.parts?.[0]?.functionCall;
+    if (!functionCall || functionCall.name !== "createTransaction") {
+      console.error("Unexpected Gemini response:", JSON.stringify(data));
       throw new Error("No se pudo interpretar la transacción");
     }
 
-    const parsedArgs = JSON.parse(toolCall.function.arguments);
+    const parsedArgs = functionCall.args;
     
     // Map account and category names to IDs
     const result: any = {

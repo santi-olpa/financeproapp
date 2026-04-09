@@ -1,18 +1,19 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { 
-  LayoutDashboard, 
-  Wallet, 
-  ArrowLeftRight, 
-  Receipt, 
-  User 
+import {
+  LayoutDashboard,
+  Wallet,
+  ArrowLeftRight,
+  Target,
+  User,
 } from 'lucide-react';
 
 const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Inicio' },
   { to: '/accounts', icon: Wallet, label: 'Cuentas' },
   { to: '/transactions', icon: ArrowLeftRight, label: 'Movimientos' },
-  { to: '/expenses', icon: Receipt, label: 'Gastos' },
+  { to: '/planning', icon: Target, label: 'Planeación' },
+  { to: '/profile', icon: User, label: 'Perfil' },
 ];
 
 export function BottomNav() {
@@ -23,28 +24,25 @@ export function BottomNav() {
       <div className="flex items-center justify-around h-16 max-w-lg mx-auto px-2">
         {navItems.map(({ to, icon: Icon, label }) => {
           const isActive = location.pathname === to || location.pathname.startsWith(to + '/');
-          
+
           return (
             <NavLink
               key={to}
               to={to}
               className={cn(
                 'flex flex-col items-center justify-center gap-1 flex-1 py-2 rounded-lg transition-colors',
-                isActive 
-                  ? 'text-primary' 
-                  : 'text-muted-foreground hover:text-foreground'
+                isActive
+                  ? 'text-primary'
+                  : 'text-muted-foreground hover:text-foreground',
               )}
             >
-              <Icon 
+              <Icon
                 className={cn(
                   'h-5 w-5 transition-transform',
-                  isActive && 'scale-110'
-                )} 
+                  isActive && 'scale-110',
+                )}
               />
-              <span className={cn(
-                'text-xs font-medium',
-                isActive && 'text-primary'
-              )}>
+              <span className={cn('text-[10px] font-medium', isActive && 'text-primary')}>
                 {label}
               </span>
             </NavLink>

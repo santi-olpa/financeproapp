@@ -1,7 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
-import { componentTagger } from "lovable-tagger";
 import { VitePWA } from "vite-plugin-pwa";
 
 // https://vitejs.dev/config/
@@ -15,20 +14,21 @@ export default defineConfig(({ mode }) => ({
   },
   plugins: [
     react(),
-    mode === "development" && componentTagger(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'robots.txt'],
+      includeAssets: ['favicon.ico', 'robots.txt', 'pwa-192x192.png', 'pwa-512x512.png'],
       manifest: {
         name: 'Finance Pro',
         short_name: 'FinancePro',
-        description: 'Tu aplicación de gestión financiera bimonetaria para el mercado argentino',
+        description: 'Tu copiloto financiero. Controlá tus ingresos, egresos, tarjetas y patrimonio.',
         theme_color: '#0f1419',
         background_color: '#0f1419',
         display: 'standalone',
         orientation: 'portrait',
         scope: '/',
-        start_url: '/',
+        start_url: '/dashboard',
+        categories: ['finance', 'productivity'],
+        lang: 'es-AR',
         icons: [
           {
             src: '/pwa-192x192.png',

@@ -1,15 +1,17 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { 
-  LayoutDashboard, 
-  Wallet, 
-  ArrowLeftRight, 
-  PieChart, 
+import {
+  LayoutDashboard,
+  Wallet,
+  ArrowLeftRight,
+  PieChart,
   User,
   Tags,
   LogOut,
   Receipt,
-  Sparkles
+  Sparkles,
+  Target,
+  Repeat,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import {
@@ -33,6 +35,8 @@ const mainNavItems = [
   { to: '/accounts', icon: Wallet, label: 'Cuentas' },
   { to: '/transactions', icon: ArrowLeftRight, label: 'Movimientos' },
   { to: '/expenses', icon: Receipt, label: 'Gastos' },
+  { to: '/expenses/recurring', icon: Repeat, label: 'Recurrentes' },
+  { to: '/planning', icon: Target, label: 'Planeación' },
   { to: '/categories', icon: Tags, label: 'Categorías' },
   { to: '/reports', icon: PieChart, label: 'Reportes' },
 ];
