@@ -13,6 +13,8 @@ import { AppLayout } from "@/components/layout/AppLayout";
 // Pages
 import Login from "./pages/auth/Login";
 import SignUp from "./pages/auth/SignUp";
+import ForgotPassword from "./pages/auth/ForgotPassword";
+import ResetPassword from "./pages/auth/ResetPassword";
 import Dashboard from "./pages/Dashboard";
 import Accounts from "./pages/Accounts";
 import NewAccount from "./pages/accounts/NewAccount";
@@ -71,6 +73,8 @@ const AppRoutes = () => (
     {/* Public routes */}
     <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
     <Route path="/signup" element={<PublicRoute><SignUp /></PublicRoute>} />
+    <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
+    <Route path="/reset-password" element={<ResetPassword />} />
     {/* Onboarding (protected but outside AppLayout) */}
     <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
 

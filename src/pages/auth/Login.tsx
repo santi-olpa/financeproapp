@@ -102,6 +102,12 @@ export default function Login() {
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading ? <LoadingSpinner size="sm" /> : 'Iniciar sesión'}
               </Button>
+
+              <div className="text-center mt-2">
+                <Link to="/forgot-password" className="text-sm text-primary hover:underline">
+                  ¿Olvidaste tu contraseña?
+                </Link>
+              </div>
             </form>
 
             <div className="relative my-6">
