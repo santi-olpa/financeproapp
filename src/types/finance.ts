@@ -1,5 +1,5 @@
 // Finance Pro - Type Definitions
-// Sincronizado con docs/02-data-model.md (Fase 1)
+// Sincronizado con docs/02-data-model.md (Fase 2.5)
 
 export type Currency = 'ARS' | 'USD';
 export type AccountType = 'bank' | 'wallet' | 'cash' | 'credit_card' | 'savings' | 'investment' | 'crypto';
@@ -10,6 +10,9 @@ export type RecurringFrequency = 'weekly' | 'biweekly' | 'monthly' | 'bimonthly'
 export type InstallmentStatus = 'pending' | 'billed' | 'paid' | 'cancelled';
 export type GoalType = 'savings' | 'habit';
 export type ExchangeRateType = 'oficial' | 'tarjeta' | 'mep' | 'blue';
+export type PendingEventKind = 'check_received' | 'check_issued' | 'transfer_expected' | 'other';
+export type PendingEventDirection = 'in' | 'out';
+export type PendingEventStatus = 'pending' | 'cleared' | 'rejected' | 'cancelled';
 
 export interface Profile {
   id: string;
@@ -306,4 +309,49 @@ export const INSTALLMENT_STATUS_LABELS: Record<InstallmentStatus, string> = {
   billed: 'En resumen',
   paid: 'Pagada',
   cancelled: 'Cancelada',
+};
+
+// Pending Events (Cheques)
+export interface PendingEvent {
+  id: string;
+  user_id: string;
+  kind: PendingEventKind;
+  direction: PendingEventDirection;
+  amount: number;
+  currency: Currency;
+  counterparty_name: string;
+  description: string | null;
+  category_id: string | null;
+  issue_date: string;
+  expected_date: string;
+  target_account_id: string | null;
+  check_number: string | null;
+  check_bank: string | null;
+  is_echeq: boolean;
+  status: PendingEventStatus;
+  cleared_at: string | null;
+  cleared_transaction_id: string | null;
+  rejected_at: string | null;
+  rejection_reason: string | null;
+  cancelled_at: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  // Joined
+  category?: { name: string; icon: string; color: string } | null;
+  target_account?: { name: string } | null;
+}
+
+export const PENDING_EVENT_KIND_LABELS: Record<PendingEventKind, string> = {
+  check_received: 'Cheque recibido',
+  check_issued: 'Cheque emitido',
+  transfer_expected: 'Transferencia esperada',
+  other: 'Otro',
+};
+
+export const PENDING_EVENT_STATUS_LABELS: Record<PendingEventStatus, string> = {
+  pending: 'Pendiente',
+  cleared: 'Cobrado',
+  rejected: 'Rechazado',
+  cancelled: 'Cancelado',
 };

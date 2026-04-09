@@ -11,6 +11,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { HelpTooltip } from '@/components/ui/help-tooltip';
 import { PatrimonyEvolutionChart } from '@/components/accounts/PatrimonyEvolutionChart';
 import { AccountGroupSection } from '@/components/accounts/AccountGroupSection';
+import { PendingEventsGroup } from '@/components/pending-events/PendingEventsGroup';
 import {
   Plus,
   Wallet,
@@ -225,6 +226,9 @@ export default function Accounts() {
                   />
                 );
               })}
+
+              {/* Cheques pendientes — solo visible si hay alguno */}
+              <PendingEventsGroup />
             </div>
           )}
         </div>
