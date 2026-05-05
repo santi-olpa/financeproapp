@@ -26,7 +26,7 @@ export default defineConfig(({ mode }) => ({
         display: 'standalone',
         orientation: 'portrait',
         scope: '/',
-        start_url: '/dashboard',
+        start_url: '/',
         categories: ['finance', 'productivity'],
         lang: 'es-AR',
         icons: [
@@ -50,6 +50,9 @@ export default defineConfig(({ mode }) => ({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // Fallback a index.html para rutas del SPA (cuando la PWA arranca offline o en una ruta no precacheada)
+        navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/api\//, /^\/auth\//],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
