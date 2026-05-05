@@ -1,0 +1,31 @@
+name: Keep Supabase Alive
+
+# Pingea el proyecto Supabase cada 3 días para evitar que se pause
+# por inactividad en el tier gratuito (que pausa después de 7 días).
+
+on:
+  schedule:
+    # Cada 3 días a las 12:00 UTC (9:00 AM Argentina)
+    - cron: '0 12 */3 * *'
+  workflow_dispatch: # Permite ejecutar manualmente desde GitHub UI
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST API
+        run: |
+          echo "Pinging Supabase project: ${{ vars.SUPABASE_URL }}"
+          # Hace una query real a la tabla categories (lectura pública de system categories)
+          # Esto cuenta como actividad para que Supabase no pause el proyecto.
+          response=$(curl -s -o /dev/null -w "%{http_code}" \
+            "${{ vars.SUPABASE_URL }}/rest/v1/categories?select=id&limit=1" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}")
+
+          if [ "$response" -eq 200 ]; then
+            echo "✅ Supabase responde correctamente (HTTP $response)"
+          else
+            echo "❌ Error: HTTP $response"
+            exit 1
+          fi
