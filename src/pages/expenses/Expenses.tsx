@@ -301,27 +301,33 @@ export default function Expenses() {
                   <h3 className="font-semibold text-sm">Ingresos vs Egresos</h3>
                   <HelpTooltip text="Comparación visual entre lo que ingresó y lo que se gastó (devengado) en el mes." />
                 </div>
-                <ResponsiveContainer width="100%" height={180}>
-                  <BarChart data={[
-                    { name: 'Ingresos', value: totalIncomeAmount, fill: 'hsl(var(--income))' },
-                    { name: 'Directos', value: totalDirectExpenses, fill: 'hsl(var(--expense))' },
-                    { name: 'Cuotas', value: totalInstallments, fill: 'hsl(var(--primary))' },
-                  ]} layout="vertical" margin={{ left: 10, right: 30, top: 5, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
-                    <XAxis type="number" tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
-                    <YAxis type="category" dataKey="name" width={70} tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
-                    <RechartsTooltip formatter={(value: number) => formatCurrency(value, currency)} contentStyle={{ backgroundColor: 'hsl(var(--card))', color: 'hsl(var(--card-foreground))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }} itemStyle={{ color: 'hsl(var(--card-foreground))' }} labelStyle={{ color: 'hsl(var(--muted-foreground))' }} />
-                    <Bar dataKey="value" radius={[0, 6, 6, 0]} barSize={28}>
-                      {[
-                        { fill: 'hsl(145, 70%, 45%)' },
-                        { fill: 'hsl(0, 75%, 55%)' },
-                        { fill: 'hsl(250, 95%, 65%)' },
-                      ].map((entry, i) => (
-                        <Cell key={i} fill={entry.fill} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+                {totalIncomeAmount === 0 && totalExpenses === 0 ? (
+                  <div className="flex items-center justify-center h-[180px] text-sm text-muted-foreground">
+                    No hay datos en este período
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height={180}>
+                    <BarChart data={[
+                      { name: 'Ingresos', value: totalIncomeAmount, fill: 'hsl(var(--income))' },
+                      { name: 'Directos', value: totalDirectExpenses, fill: 'hsl(var(--expense))' },
+                      { name: 'Cuotas', value: totalInstallments, fill: 'hsl(var(--primary))' },
+                    ]} layout="vertical" margin={{ left: 10, right: 30, top: 5, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
+                      <XAxis type="number" tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
+                      <YAxis type="category" dataKey="name" width={70} tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
+                      <RechartsTooltip formatter={(value: number) => formatCurrency(value, currency)} contentStyle={{ backgroundColor: 'hsl(var(--card))', color: 'hsl(var(--card-foreground))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '12px' }} itemStyle={{ color: 'hsl(var(--card-foreground))' }} labelStyle={{ color: 'hsl(var(--muted-foreground))' }} />
+                      <Bar dataKey="value" radius={[0, 6, 6, 0]} barSize={28}>
+                        {[
+                          { fill: 'hsl(145, 70%, 45%)' },
+                          { fill: 'hsl(0, 75%, 55%)' },
+                          { fill: 'hsl(250, 95%, 65%)' },
+                        ].map((entry, i) => (
+                          <Cell key={i} fill={entry.fill} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
                 <div className="flex gap-4 mt-2 text-xs text-muted-foreground justify-center">
                   <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'hsl(145, 70%, 45%)' }} /> Ingresos</span>
                   <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: 'hsl(0, 75%, 55%)' }} /> Directos</span>
