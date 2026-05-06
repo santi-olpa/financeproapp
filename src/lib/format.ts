@@ -24,8 +24,16 @@ export function formatCompactCurrency(amount: number, currency: Currency): strin
   return formatCurrency(amount, currency);
 }
 
-export function formatDate(date: string | Date): string {
+function toDate(date: string | Date | null | undefined): Date | null {
+  if (!date) return null;
   const d = typeof date === 'string' ? new Date(date) : date;
+  if (!(d instanceof Date) || isNaN(d.getTime())) return null;
+  return d;
+}
+
+export function formatDate(date: string | Date | null | undefined): string {
+  const d = toDate(date);
+  if (!d) return '—';
   return d.toLocaleDateString('es-AR', {
     day: 'numeric',
     month: 'short',
@@ -33,16 +41,18 @@ export function formatDate(date: string | Date): string {
   });
 }
 
-export function formatShortDate(date: string | Date): string {
-  const d = typeof date === 'string' ? new Date(date) : date;
+export function formatShortDate(date: string | Date | null | undefined): string {
+  const d = toDate(date);
+  if (!d) return '—';
   return d.toLocaleDateString('es-AR', {
     day: 'numeric',
     month: 'short',
   });
 }
 
-export function formatRelativeDate(date: string | Date): string {
-  const d = typeof date === 'string' ? new Date(date) : date;
+export function formatRelativeDate(date: string | Date | null | undefined): string {
+  const d = toDate(date);
+  if (!d) return '—';
   const now = new Date();
   const diffTime = now.getTime() - d.getTime();
   const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
@@ -50,7 +60,7 @@ export function formatRelativeDate(date: string | Date): string {
   if (diffDays === 0) return 'Hoy';
   if (diffDays === 1) return 'Ayer';
   if (diffDays < 7) return `Hace ${diffDays} días`;
-  
+
   return formatShortDate(d);
 }
 
